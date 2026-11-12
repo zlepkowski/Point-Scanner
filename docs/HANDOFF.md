@@ -144,6 +144,9 @@ would break the no-install rule).
 ## Next steps (by impact)
 
 1. Real data source (keep the Award shape; `normalizeAwards` already validates).
+   **In progress:** a polite collector for loyalty-program sites lives in
+   `collector/`; status, survey results and open items are in
+   [`LIVE_DATA.md`](LIVE_DATA.md).
 2. Bank transferable currencies in Wallet (Amex MR, Chase UR, …) with
    transfer ratios, clearly dated since partners change.
 3. Precompute/serialize the synthetic set, or move generation to a Web Worker,

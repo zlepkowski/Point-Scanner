@@ -81,6 +81,7 @@ assets/js/
                            cabinChips, airportSelect, badges, connectionList
   pages/                   home, search, explore, calendar, wallet, saved,
                            programs, about
+collector/                 polite award collector (work in progress)
 test/                      node:test suites
 docs/HANDOFF.md            architecture and decisions, for the next contributor
 ```
@@ -109,6 +110,9 @@ Everything reads one array of award records:
 
 Invalid and past-dated records are skipped with a reason; if nothing usable
 loads, the synthetic data is used and a warning is logged.
+
+A first-pass collector for loyalty-program websites (`node collector/run.js`)
+writes this file; it's a work in progress, see [docs/LIVE_DATA.md](docs/LIVE_DATA.md).
 
 ## Deploy
 
