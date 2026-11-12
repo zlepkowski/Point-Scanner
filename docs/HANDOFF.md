@@ -15,7 +15,12 @@ Constraints that shaped everything:
 - No backend, no account, no tracking. Static files only.
 - Must work when `index.html` is double-clicked (`file://`), so the ES module
   source is bundled into a classic script by `build.mjs`.
-- No `npm install` to edit or run. Node is only needed to rebuild and test.
+- No `npm install` to edit or run. Node is only needed to rebuild and test;
+  the CSS step fetches a pinned Tailwind CLI on demand with `npx`.
+- No third-party requests at runtime: fonts are self-hosted and Tailwind is
+  compiled into `dist/pointscanner.css` (privacy, and no unstyled flash).
+- UI, copy and data handling follow `docs/DESIGN_GUIDELINES.md`; the latest
+  audit is `docs/DESIGN_AUDIT.md`.
 
 ## Architecture
 
@@ -32,8 +37,9 @@ main.js ── loadAwards() ──► data/store.js  (array + indexes byFrom/byR
 - **Data** is synchronous after boot: `main.js` awaits `loadAwards()` once,
   then every view reads the in-memory store. `onDataChange` re-renders the
   current page when data is swapped (About → load file).
-- **Colours** are CSS variables in `assets/css/styles.css`; Tailwind's config in
-  `index.html` only references them. Dark mode swaps variable values under
+- **Tokens** (colour, spacing, radius, elevation, motion, target sizes) are CSS
+  variables in `assets/css/styles.css`; `tailwind.config.cjs` only references
+  the colours. Dark mode swaps variable values under
   `[data-theme="dark"]`. The inline head script and `util/theme.js` always
   resolve "system" to `light`/`dark`, so there's a single dark definition.
   Use `ink-*` (neutrals), `brand-*`, `accent-*` (sweet spots), `good-*`/`bad-*`
@@ -131,15 +137,15 @@ would break the no-install rule).
 
 1. Synthetic data. Partner lists are simplified; program names and colours
    are for identification only.
-2. Tailwind Play CDN: brief unstyled flash on first load and a dependency on
-   the CDN. `styles.css` covers base colours and primitives so the page
-   degrades to readable without it.
-3. Bundle is ~180 KB unminified; generation takes ~250 ms on a laptop. Fine
-   for now; minification or a precomputed dataset would help on low-end phones.
-4. Hash routing only.
-5. Connections price as two separate awards; real programs often price a
+2. Bundle is ~200 KB unminified (CSS ~16 KB); generation takes ~250 ms on a
+   laptop. Fine for now; minification or a precomputed dataset would help on
+   low-end phones.
+3. Hash routing only.
+4. Connections price as two separate awards; real programs often price a
    through-itinerary differently (usually cheaper).
-6. Time zones are fixed standard-time offsets (no DST).
+5. Time zones are fixed standard-time offsets (no DST).
+6. Legal pages (Privacy, Terms) are drafts with `[[TODO]]` placeholders for
+   the operator's details; see "Needs owner input" in `DESIGN_AUDIT.md`.
 
 ## Next steps (by impact)
 
