@@ -69,7 +69,7 @@ export function awardTableHtml(rows, { sort = 'score', dir = 'desc', caption = '
         <td class="num text-ink-700">${a.seats}</td>
         <td>${scoreBadge(a.score, a.sweet)}</td>
         <td class="whitespace-nowrap text-right">
-          <a class="link text-sm" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}"
+          <a class="link link-target text-sm" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}"
             aria-label="Calendar for ${esc(a.from)} to ${esc(a.to)}, ${esc(a.cabin)}">Calendar</a>
         </td>
       </tr>`,

@@ -66,8 +66,8 @@ function cardHtml(p, s) {
         }
         <p class="text-xs text-ink-500">Partners (simplified): ${p.partners.length} airlines</p>
         <div class="mt-auto flex flex-wrap gap-x-4 gap-y-1 border-t border-ink-100 pt-3 text-sm">
-          <a class="link" href="${buildHash('/search', { programs: p.id, sort: 'score' })}">Search awards</a>
-          <a class="link" href="${buildHash('/wallet', { b: `${p.id}:100000` })}">What can 100k book?</a>
+          <a class="link link-target" href="${buildHash('/search', { programs: p.id, sort: 'score' })}">Search awards</a>
+          <a class="link link-target" href="${buildHash('/wallet', { b: `${p.id}:100000` })}">What can 100k book?</a>
         </div>
       </div>
     </li>`;
@@ -82,7 +82,7 @@ export function render(root, { query, router }) {
     `
     <div class="mb-6">
       <h1 tabindex="-1" class="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">Loyalty programs</h1>
-      <p class="mt-1 max-w-2xl text-ink-600">The ${PROGRAMS.length} programs Pointscanner scans, with what's bookable in each right now. The baseline is the
+      <p class="mt-1 max-w-2xl text-ink-600">The ${PROGRAMS.length} programs Pointscanner covers, with what's bookable in each in the current data. The baseline is the
         value per point a deal score of 1.0× represents.</p>
     </div>
     <div role="group" aria-label="Filter by alliance" class="mb-5 flex flex-wrap gap-2">

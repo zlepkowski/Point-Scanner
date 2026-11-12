@@ -4,6 +4,7 @@ import { programById } from '../data/programs.js';
 import { esc } from '../util/dom.js';
 import { CABIN_LABEL, fmtDate, fmtDuration, fmtNumber, fmtUsd } from '../util/format.js';
 import { cabinBadge, mixedCabinBadge, programTag, scoreBadge } from './badges.js';
+import { icon } from './icons.js';
 
 const city = (iata) => airportByIata.get(iata)?.city ?? iata;
 
@@ -29,10 +30,10 @@ export function connectionItemHtml(it) {
     <li class="card p-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <p class="font-mono text-base font-semibold text-ink-900">
-            ${esc(it.from)} <span aria-hidden="true" class="text-ink-400">→</span>
+          <p class="flex items-center gap-1.5 font-mono text-base font-semibold text-ink-900">
+            ${esc(it.from)} ${icon('arrowRight', { size: 14, className: 'text-ink-400' })}
             <span class="rounded bg-brand-100 px-1 text-brand-800">${esc(it.via)}</span>
-            <span aria-hidden="true" class="text-ink-400">→</span> ${esc(it.to)}
+            ${icon('arrowRight', { size: 14, className: 'text-ink-400' })} ${esc(it.to)}
             <span class="sr-only">, connecting in ${esc(city(it.via))}</span>
           </p>
           <p class="text-sm text-ink-600">${fmtDate(it.date)} · ${layover}${it.durationHours ? ` · ${fmtDuration(it.durationHours)} total` : ''}</p>

@@ -7,6 +7,8 @@ import { awardCardHtml, cardGridHtml } from '../components/awardCard.js';
 import { awardTableHtml, sortAwards } from '../components/awardTable.js';
 import { bindChips, cabinChipsHtml } from '../components/cabinChips.js';
 import { programSwatch } from '../components/badges.js';
+import { icon } from '../components/icons.js';
+import { parseAmount } from '../util/number.js';
 import { announce, debounce, esc, mount, on } from '../util/dom.js';
 import { buildHash } from '../util/router.js';
 import { CABINS, CABIN_SHORT, fmtNumber, plural } from '../util/format.js';
@@ -27,9 +29,9 @@ function balanceRowHtml(b, i) {
       </div>
       <div>
         <label class="field-label ${i ? 'sr-only' : ''}" for="bal-amt-${i}">Balance</label>
-        <input id="bal-amt-${i}" name="amount" type="number" inputmode="numeric" min="0" step="1000" class="input tabular" value="${b.amount || ''}" placeholder="e.g. 75000" />
+        <input id="bal-amt-${i}" name="amount" type="text" inputmode="numeric" autocomplete="off" class="input tabular" value="${b.amount || ''}" placeholder="e.g. 75k" />
       </div>
-      <button type="button" class="btn btn-ghost" data-remove-balance="${i}" aria-label="Remove ${esc(programById.get(b.programId)?.name ?? 'program')} balance">✕</button>
+      <button type="button" class="btn btn-ghost" data-remove-balance="${i}" aria-label="Remove ${esc(programById.get(b.programId)?.name ?? 'program')} balance">${icon('x')}</button>
     </div>`;
 }
 
@@ -80,7 +82,7 @@ export function render(root, { query, router }) {
   function readRows() {
     state.balances = [...rowsEl.querySelectorAll('[data-balance-row]')].map((row) => ({
       programId: row.querySelector('[name="programId"]').value,
-      amount: Math.max(0, Math.round(Number(row.querySelector('[name="amount"]').value) || 0)),
+      amount: parseAmount(row.querySelector('[name="amount"]').value) ?? 0,
     }));
   }
 
@@ -193,13 +195,13 @@ function programSectionHtml(p, state) {
       <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="w-${p.programId}" class="flex items-center gap-2 text-lg font-semibold text-ink-900">${programSwatch(p.programId)} ${esc(program.name)}
           <span class="text-sm font-normal text-ink-500">${fmtNumber(p.amount)} ${esc(program.currency)}</span></h3>
-        <a class="link text-sm" href="${buildHash('/search', {
+        <a class="link link-target text-sm" href="${buildHash('/search', {
           programs: p.programId,
           from: state.from.trim(),
           cabins: state.cabins.length === CABINS.length ? null : state.cabins.join(','),
           maxMiles: p.amount,
           sort: 'score',
-        })}">Open in Search →</a>
+        })}">Open in Search ${icon('arrowRight', { size: 14 })}</a>
       </div>
       <p class="mb-3 text-sm text-ink-600">${plural(p.affordableCount, 'award')} to ${plural(p.destinationCount, 'destination')} within your balance.</p>
       ${best ? `<ul class="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">${best}</ul>` : ''}

@@ -107,3 +107,17 @@ test('program stats summarise counts and medians', () => {
   assert.equal(s.medianByCabin.business, 70000);
   assert.equal(s.medianByCabin.first, null);
 });
+
+test('home value example contrasts a cheaper-in-miles award with a better-value one', async () => {
+  const { valueExample } = await import('../assets/js/pages/home.js');
+  const list = awards([
+    { programId: 'virgin', airline: 'DL', miles: 50000, taxesUsd: 600 },
+    { programId: 'aeroplan', miles: 70000, taxesUsd: 50 },
+    { programId: 'aeroplan', miles: 90000, taxesUsd: 50, to: 'CDG' },
+  ]);
+  const ex = valueExample(list);
+  assert.equal(ex.cheaper.programId, 'virgin');
+  assert.equal(ex.better.programId, 'aeroplan');
+  assert.ok(ex.better.score > ex.cheaper.score && ex.cheaper.miles < ex.better.miles);
+  assert.equal(valueExample(awards([{ miles: 60000 }])), null);
+});

@@ -8,6 +8,7 @@ import { airportInputHtml } from '../components/airportSelect.js';
 import { awardTableHtml, nextSort, sortAwards } from '../components/awardTable.js';
 import { bindChips, cabinChipsHtml } from '../components/cabinChips.js';
 import { announce, esc, mount, on } from '../util/dom.js';
+import { icon, routeArrow } from '../components/icons.js';
 import { buildHash } from '../util/router.js';
 import { addDays, dateRange, dayOfWeek } from '../util/date.js';
 import {
@@ -119,7 +120,7 @@ function tooltipHtml(day) {
     <p class="mt-1"><span class="text-base font-semibold tabular">${fmtNumber(a.miles)}</span> ${esc(program?.currency ?? 'miles')} + ${fmtUsd(a.taxesUsd)}</p>
     <p>${esc(airlineName(a.airline))} ${esc(a.flightNo)}${a.departTime ? ` · dep ${esc(a.departTime)}` : ''}</p>
     <p>Book via ${esc(program?.name ?? a.programId)} · ${plural(a.seats, 'seat')}</p>
-    <p>Value ${fmtScore(a.score)}${a.sweet ? ' · ★ sweet spot' : ''}</p>
+    <p>Value ${fmtScore(a.score)}${a.sweet ? ' · sweet spot' : ''}</p>
     ${day.all.length > 1 ? `<p class="mt-1 opacity-75">+${day.all.length - 1} more option${day.all.length === 2 ? '' : 's'} this day</p>` : ''}`;
 }
 
@@ -144,7 +145,7 @@ export function render(root, { query, router }) {
     </div>
     <form id="cal-form" class="card grid gap-4 p-4 lg:grid-cols-[1fr_auto_1fr_auto_minmax(0,14rem)] lg:items-end" aria-label="Calendar options">
       ${airportInputHtml({ id: 'cal-from', name: 'from', label: 'From', value: state.from })}
-      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end lg:my-0 lg:mb-1 lg:justify-self-auto" data-swap aria-label="Swap origin and destination">⇄</button>
+      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end lg:my-0 lg:mb-1 lg:justify-self-auto" data-swap aria-label="Swap origin and destination">${icon('swap', { size: 18 })}</button>
       ${airportInputHtml({ id: 'cal-to', name: 'to', label: 'To', value: state.to })}
       <div>
         <span class="field-label">Cabin</span>
@@ -167,6 +168,7 @@ export function render(root, { query, router }) {
   const body = root.querySelector('#cal-body');
   const tip = root.querySelector('#heat-tip');
   let days = [];
+  let justSaved = false;
 
   function routeAwards() {
     return awardsOnRoute(state.from, state.to).filter((a) => a.cabin === state.cabin && (!state.program || a.programId === state.program));
@@ -208,7 +210,7 @@ export function render(root, { query, router }) {
       <div class="card p-4 sm:p-6">
         <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 class="text-lg font-semibold text-ink-900">${esc(airportLabel(state.from))} → ${esc(airportLabel(state.to))}</h2>
+            <h2 class="text-lg font-semibold text-ink-900">${esc(airportLabel(state.from))} ${routeArrow(16)} ${esc(airportLabel(state.to))}</h2>
             <p class="text-sm text-ink-600">${esc(CABIN_LABEL[state.cabin])} · ${state.program ? esc(programName(state.program)) : 'All programs'} ·
               ${withSpace.length} of ${WINDOW_DAYS} days with space${cheapest ? ` · cheapest ${fmtNumber(cheapest.best.miles)} on ${esc(fmtDate(cheapest.date))}` : ''}${sweetDays ? ` · ${plural(sweetDays, 'sweet-spot day')}` : ''}</p>
           </div>
@@ -216,8 +218,8 @@ export function render(root, { query, router }) {
             <a class="btn btn-sm" href="${buildHash('/search', { from: state.from, to: state.to, cabins: state.cabin, programs: state.program || null, sort: 'date' })}">List view</a>
             ${
               saved
-                ? '<a class="btn btn-sm" href="#/saved"><span aria-hidden="true">★</span> Saved, view alerts</a>'
-                : `<button type="button" class="btn btn-sm" data-save-route><span aria-hidden="true">☆</span> Save route</button>`
+                ? `<a class="btn btn-sm ${justSaved ? 'pulse-once' : ''}" href="#/saved">${icon('star', { filled: true, className: 'text-brand-600' })}Saved, view alerts</a>`
+                : `<button type="button" class="btn btn-sm" data-save-route>${icon('star')}Save route</button>`
             }
           </div>
         </div>
@@ -251,6 +253,7 @@ export function render(root, { query, router }) {
     const above = r.top - t.height - 8;
     tip.style.left = `${left}px`;
     tip.style.top = `${above > 8 ? above : r.bottom + 8}px`;
+    tip.style.setProperty('--tip-origin', above > 8 ? 'bottom center' : 'top center');
   }
   const hideTip = () => {
     tip.hidden = true;
@@ -340,7 +343,10 @@ export function render(root, { query, router }) {
     }),
     on(body, 'click', '[data-save-route]', () => {
       addSaved({ from: state.from, to: state.to, cabin: state.cabin, programId: state.program || null }, awardsOnRoute(state.from, state.to));
+      justSaved = true;
       renderBody();
+      justSaved = false;
+      body.querySelector('a[href="#/saved"]')?.focus();
       document.dispatchEvent(new CustomEvent('pointscanner:saved-changed'));
       announce(`Saved ${state.from} to ${state.to}.`);
     }),

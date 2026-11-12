@@ -1,4 +1,5 @@
 import { fmtNumber } from '../util/format.js';
+import { icon } from './icons.js';
 
 function pageList(page, count) {
   const pages = new Set([1, count, page - 1, page, page + 1]);
@@ -32,9 +33,9 @@ export function pagerHtml({ page, total, pageSize }) {
     <nav class="flex flex-wrap items-center justify-between gap-3 pt-4" aria-label="Results pages">
       <p class="text-sm text-ink-600 tabular">Showing ${fmtNumber(first)}–${fmtNumber(last)} of ${fmtNumber(total)}</p>
       <div class="flex flex-wrap items-center gap-1">
-        ${btn(page - 1, '← Prev', { disabled: page <= 1, aria: 'Previous page' })}
+        ${btn(page - 1, `${icon('arrowLeft')}Prev`, { disabled: page <= 1, aria: 'Previous page' })}
         ${items}
-        ${btn(page + 1, 'Next →', { disabled: page >= count, aria: 'Next page' })}
+        ${btn(page + 1, `Next${icon('arrowRight')}`, { disabled: page >= count, aria: 'Next page' })}
       </div>
     </nav>`;
 }

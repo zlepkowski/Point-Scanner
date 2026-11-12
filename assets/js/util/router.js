@@ -52,12 +52,20 @@ export class Router {
   }
 
   render(pathChanged = false) {
-    if (typeof this.cleanup === 'function') this.cleanup();
-    this.cleanup = null;
-    const page = this.routes[this.current.path] ?? this.notFound;
-    this.onBeforeRender?.(this.current);
-    this.cleanup = page.render(this.outlet, { query: this.current.query, path: this.current.path, router: this });
-    this.onAfterRender?.(this.current, pathChanged);
+    const run = () => {
+      if (typeof this.cleanup === 'function') this.cleanup();
+      this.cleanup = null;
+      const page = this.routes[this.current.path] ?? this.notFound;
+      this.onBeforeRender?.(this.current);
+      this.cleanup = page.render(this.outlet, { query: this.current.query, path: this.current.path, router: this });
+      this.onAfterRender?.(this.current, pathChanged);
+    };
+    // Crossfade between pages where View Transitions exist; never on the first
+    // render, on in-page updates, or when the user prefers reduced motion.
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (pathChanged && this.rendered && document.startViewTransition && !reduce) document.startViewTransition(run);
+    else run();
+    this.rendered = true;
   }
 
   go(path, query = {}) {

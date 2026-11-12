@@ -34,5 +34,9 @@ export function memoryStorage() {
     setItem: (k, v) => data.set(k, String(v)),
     removeItem: (k) => data.delete(k),
     clear: () => data.clear(),
+    key: (i) => [...data.keys()][i] ?? null,
+    get length() {
+      return data.size;
+    },
   };
 }

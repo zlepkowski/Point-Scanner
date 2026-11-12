@@ -22,6 +22,7 @@ import { announce, debounce, esc, mount, on } from '../util/dom.js';
 import { buildHash } from '../util/router.js';
 import { CABINS, CABIN_SHORT, fmtNumber, plural } from '../util/format.js';
 import { programName } from '../data/programs.js';
+import { icon, routeArrow } from '../components/icons.js';
 
 export const PAGE_SIZE = 50;
 const CONNECTION_STEP = 10;
@@ -75,6 +76,7 @@ function saveTarget(state, from, to) {
 export function render(root, { query, router }) {
   const state = stateFromQuery(query);
   let connectionLimit = CONNECTION_STEP;
+  let justSaved = false;
   const win = getWindow();
 
   mount(
@@ -86,7 +88,7 @@ export function render(root, { query, router }) {
     </div>
     <form id="route-form" class="card grid gap-3 p-4 md:grid-cols-[1fr_auto_1fr_auto] md:items-end" role="search" aria-label="Route">
       ${airportInputHtml({ id: 'from', name: 'from', label: 'From', value: state.from, placeholder: 'Anywhere' })}
-      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end md:my-0 md:mb-1 md:justify-self-auto" data-swap aria-label="Swap origin and destination">⇄</button>
+      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end md:my-0 md:mb-1 md:justify-self-auto" data-swap aria-label="Swap origin and destination">${icon('swap', { size: 18 })}</button>
       ${airportInputHtml({ id: 'to', name: 'to', label: 'To', value: state.to, placeholder: 'Anywhere' })}
       <button class="btn btn-primary" type="submit">Search</button>
     </form>
@@ -148,8 +150,8 @@ export function render(root, { query, router }) {
           <a class="btn btn-sm" href="${buildHash('/calendar', { from: target.from, to: target.to, cabin: target.cabin === 'any' ? 'business' : target.cabin, program: target.programId })}">Calendar view</a>
           ${
             saved
-              ? `<a class="btn btn-sm" href="#/saved"><span aria-hidden="true">★</span> Saved, view alerts</a>`
-              : `<button type="button" class="btn btn-sm" data-save-route><span aria-hidden="true">☆</span> Save route${target.cabin !== 'any' ? ` (${esc(CABIN_SHORT[target.cabin])})` : ''}</button>`
+              ? `<a class="btn btn-sm ${justSaved ? 'pulse-once' : ''}" href="#/saved">${icon('star', { filled: true, className: 'text-brand-600' })}Saved, view alerts</a>`
+              : `<button type="button" class="btn btn-sm" data-save-route>${icon('star')}Save route${target.cabin !== 'any' ? ` (${esc(CABIN_SHORT[target.cabin])})` : ''}</button>`
           }
         </div>`
       : '';
@@ -159,7 +161,7 @@ export function render(root, { query, router }) {
       <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="results-heading" class="text-lg font-semibold text-ink-900">${plural(rows.length, 'award')}</h2>
-          <p class="text-sm text-ink-600">${esc(describe(from))} → ${esc(describe(to))} · ${esc(cabins)}${
+          <p class="text-sm text-ink-600">${esc(describe(from))} ${routeArrow(12)} ${esc(describe(to))} · ${esc(cabins)}${
             state.filters.programs ? ` · ${state.filters.programs.length === 1 ? esc(programName(state.filters.programs[0])) : `${state.filters.programs.length} programs`}` : ''
           } · ${plural(sweetCount, 'sweet spot')}</p>
         </div>
@@ -273,9 +275,9 @@ export function render(root, { query, router }) {
   });
 
   const offs = [
-    on(panel, 'input', 'input[type="number"]', onFiltersChangedSoon),
+    on(panel, 'input', 'input[data-amount]', onFiltersChangedSoon),
     on(panel, 'change', 'input, select', (e, el) => {
-      if (el.type !== 'number') onFiltersChanged();
+      if (!el.hasAttribute('data-amount')) onFiltersChanged();
     }),
     bindChips(panel, onFiltersChanged),
     on(root, 'click', '[data-reset-filters]', resetFilters),
@@ -295,7 +297,10 @@ export function render(root, { query, router }) {
       const target = saveTarget(state, resolveLocation(state.from), resolveLocation(state.to));
       if (!target) return;
       addSaved(target, awardsOnRoute(target.from, target.to));
+      justSaved = true;
       renderResults();
+      justSaved = false;
+      resultsEl.querySelector('a[href="#/saved"]')?.focus();
       document.dispatchEvent(new CustomEvent('pointscanner:saved-changed'));
       announce(`Saved ${target.from} to ${target.to}. You'll see changes on the Saved page.`);
     }),

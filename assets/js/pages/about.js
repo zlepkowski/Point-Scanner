@@ -108,11 +108,10 @@ sweet spot: score ≥ ${SWEET_SPOT_THRESHOLD}×</code></pre>
       ${section(
         'about-privacy',
         'Privacy',
-        `<p>No account, no cookies, no analytics, no ads. There is no server: searches run entirely in your browser.</p>
-         <p>Saved routes, wallet balances and your theme are kept in this browser's <code class="font-mono text-sm">localStorage</code>
-          (keys starting <code class="font-mono text-sm">pointscanner:</code>). Clearing site data removes them.</p>
-         <p>The page loads Tailwind CSS from <code class="font-mono text-sm">cdn.tailwindcss.com</code> and fonts from Google Fonts. Those
-          services receive an ordinary request when the page loads, the same as any website using them.</p>`,
+        `<p>No account, no cookies, no analytics, no ads and no third-party requests: fonts and styles are served with the site, and
+          searches run entirely in your browser. Saved routes, wallet balances and your theme stay in this browser's
+          <code class="font-mono text-sm">localStorage</code>. Details, plus export and delete buttons, are on the
+          <a class="link" href="#/privacy">privacy page</a>.</p>`,
       )}
       ${section(
         'about-license',
