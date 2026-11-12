@@ -3,6 +3,8 @@ import { airportLabel } from '../data/airports.js';
 import { programName } from '../data/programs.js';
 import { evaluateSaved, markSeen, removeSaved, setTarget } from '../data/alerts.js';
 import { announce, esc, mount, on } from '../util/dom.js';
+import { routeArrow } from '../components/icons.js';
+import { parseAmount } from '../util/number.js';
 import { buildHash } from '../util/router.js';
 import { CABIN_LABEL, fmtDate, fmtNumber, plural } from '../util/format.js';
 
@@ -29,8 +31,8 @@ function entryHtml({ saved, current, diff, noteworthy }) {
   const chips = [];
   if (diff.opened.length) chips.push(`<span class="badge badge-good">${plural(diff.opened.length, 'new date')}</span>`);
   if (diff.drops.length) chips.push(`<span class="badge badge-good">${plural(diff.drops.length, 'price drop')}</span>`);
-  if (diff.newLow) chips.push(`<span class="badge badge-sweet">New low ${fmtNumber(diff.currLow)}</span>`);
-  if (diff.targetHits.length) chips.push(`<span class="badge badge-sweet">${plural(diff.targetHits.length, 'date')} under target</span>`);
+  if (diff.newLow) chips.push(`<span class="badge badge-good">New low ${fmtNumber(diff.currLow)}</span>`);
+  if (diff.targetHits.length) chips.push(`<span class="badge badge-good">${plural(diff.targetHits.length, 'date')} under target</span>`);
   if (diff.closed.length) chips.push(`<span class="badge badge-bad">${plural(diff.closed.length, 'date')} gone</span>`);
   if (!chips.length) chips.push('<span class="badge">No changes</span>');
 
@@ -46,7 +48,7 @@ function entryHtml({ saved, current, diff, noteworthy }) {
   }
   if (diff.targetHits.length) {
     details.push(
-      `<li><span class="font-semibold text-accent-800">At or under ${fmtNumber(saved.targetMiles)}:</span> ${diff.targetHits
+      `<li><span class="font-semibold text-good-800">At or under ${fmtNumber(saved.targetMiles)}:</span> ${diff.targetHits
         .slice(0, MAX_LISTED)
         .map((h) => `${esc(fmtDate(h.date))} (${fmtNumber(h.miles)})`)
         .join(', ')}</li>`,
@@ -56,10 +58,10 @@ function entryHtml({ saved, current, diff, noteworthy }) {
 
   const cabinParam = saved.cabin === 'any' ? null : saved.cabin;
   return `
-    <li class="card p-4 sm:p-5 ${noteworthy ? 'ring-2 ring-accent-400' : ''}" data-saved-id="${esc(saved.id)}">
+    <li class="card p-4 sm:p-5 ${noteworthy ? 'ring-2 ring-brand-500' : ''}" data-saved-id="${esc(saved.id)}">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <h2 class="font-mono text-lg font-semibold text-ink-900">${esc(saved.from)} → ${esc(saved.to)}</h2>
+          <h2 class="flex items-center gap-1.5 font-mono text-lg font-semibold text-ink-900">${esc(saved.from)} ${routeArrow(16)} ${esc(saved.to)}</h2>
           <p class="text-sm text-ink-600">${esc(airportLabel(saved.from))} to ${esc(airportLabel(saved.to))} · ${esc(cabinLabel)} · ${
             saved.programId ? esc(programName(saved.programId)) : 'All programs'
           }</p>
@@ -72,11 +74,11 @@ function entryHtml({ saved, current, diff, noteworthy }) {
       ${details.length ? `<ul class="mt-3 space-y-1 text-sm text-ink-700">${details.join('')}</ul>` : ''}
       <div class="mt-4 flex flex-wrap items-end gap-2 border-t border-ink-100 pt-4">
         <label class="text-xs text-ink-600">Alert me at or under
-          <input type="number" class="input mt-1 w-36 tabular" min="0" step="5000" data-target value="${saved.targetMiles ?? ''}" placeholder="Any price" />
+          <input type="text" inputmode="numeric" autocomplete="off" class="input mt-1 w-36 tabular" data-target value="${saved.targetMiles ?? ''}" placeholder="Any, e.g. 60k" />
         </label>
         <a class="btn btn-sm" href="${buildHash('/calendar', { from: saved.from, to: saved.to, cabin: cabinParam ?? 'business', program: saved.programId })}">Calendar</a>
         <a class="btn btn-sm" href="${buildHash('/search', { from: saved.from, to: saved.to, cabins: cabinParam, programs: saved.programId, sort: 'date' })}">Search</a>
-        ${noteworthy ? '<button type="button" class="btn btn-sm btn-primary" data-mark-seen>Mark as seen</button>' : ''}
+        ${noteworthy ? '<button type="button" class="btn btn-sm" data-mark-seen>Mark as seen</button>' : ''}
         <button type="button" class="btn btn-sm btn-ghost ml-auto" data-remove aria-label="Stop watching ${esc(saved.from)} to ${esc(saved.to)}">Remove</button>
       </div>
     </li>`;
@@ -127,7 +129,7 @@ export function render(root) {
       root.querySelector('h1')?.focus();
     }),
     on(root, 'change', '[data-target]', (e, input) => {
-      setTarget(idOf(input), Math.round(Number(input.value)) || null);
+      setTarget(idOf(input), parseAmount(input.value));
       draw();
       changed();
       announce('Target updated');

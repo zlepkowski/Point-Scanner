@@ -1,13 +1,13 @@
 import { loadJson, saveJson } from './storage.js';
 
-const KEY = 'pointscanner:theme';
+export const THEME_KEY = 'pointscanner:theme';
 export const THEMES = ['system', 'light', 'dark'];
 
 let media = null;
 let mediaListener = null;
 
 export function getTheme() {
-  const t = loadJson(KEY, 'system');
+  const t = loadJson(THEME_KEY, 'system');
   return THEMES.includes(t) ? t : 'system';
 }
 
@@ -26,7 +26,7 @@ export function applyTheme(theme) {
 }
 
 export function setTheme(theme) {
-  saveJson(KEY, theme);
+  saveJson(THEME_KEY, theme);
   applyTheme(theme);
 }
 

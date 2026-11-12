@@ -1,7 +1,7 @@
 # Pointscanner
 
-A free, open-source award-flight finder. Pointscanner scans award space across
-20 loyalty programs and scores every seat against what those points are
+A free, open-source award-flight finder. Pointscanner compares award space
+across 20 loyalty programs and scores every seat against what those points are
 normally worth, so you can tell a genuinely good redemption from a merely
 cheap one.
 
@@ -51,26 +51,35 @@ open index.html            # macOS; or just double-click it
 ## Develop
 
 Requires Node 20+ for the build and tests only. The site itself has no
-dependencies.
+runtime dependencies and makes no third-party requests.
 
 ```bash
-node build.mjs             # bundle assets/js → dist/pointscanner.js
+node build.mjs             # bundle assets/js → dist/pointscanner.js and
+                           # compile Tailwind → dist/pointscanner.css
 node build.mjs --watch     # rebuild on change
-node build.mjs --check     # fail if the committed bundle is stale
+node build.mjs --check     # fail if either committed file is stale
 npm test                   # unit tests (node:test, no packages)
 python3 -m http.server 8080
 ```
 
-`dist/pointscanner.js` is committed so the double-click workflow keeps
-working. CI fails if you forget to rebuild.
+`dist/` is committed so the double-click workflow keeps working, and CI
+fails if you forget to rebuild. The CSS step runs a pinned Tailwind CLI
+through `npx` (fetched on first use, nothing added to the repo); offline, the
+JS still builds and the CSS step is skipped with a warning.
+
+UI, copy and data-handling changes follow
+[docs/DESIGN_GUIDELINES.md](docs/DESIGN_GUIDELINES.md); the latest audit
+against it is [docs/DESIGN_AUDIT.md](docs/DESIGN_AUDIT.md).
 
 ### Layout
 
 ```
-index.html                 shell: theme bootstrap, Tailwind config, bundle
-build.mjs                  zero-dependency bundler (ES modules → one IIFE)
-dist/pointscanner.js       committed bundle
-assets/css/styles.css      colour tokens (light + dark), primitives, heatmap
+index.html                 shell: theme bootstrap, styles, bundle
+build.mjs                  bundler (ES modules → one IIFE) + Tailwind compile
+tailwind.config.cjs        Tailwind theme (references the CSS variables)
+dist/                      committed bundle and compiled CSS
+assets/css/styles.css      design tokens (colour, space, radius, motion), primitives
+assets/fonts/              self-hosted Inter + JetBrains Mono (OFL)
 assets/js/
   main.js                  router bootstrap, data loading
   util/                    rand, geo, date, format, cpm, dom, router, storage, theme
@@ -80,7 +89,8 @@ assets/js/
   components/              header, awardCard, awardTable, filters, pager,
                            cabinChips, airportSelect, badges, connectionList
   pages/                   home, search, explore, calendar, wallet, saved,
-                           programs, about
+                           programs, about, privacy, terms
+collector/                 polite award collector (work in progress)
 test/                      node:test suites
 docs/HANDOFF.md            architecture and decisions, for the next contributor
 ```
@@ -110,6 +120,9 @@ Everything reads one array of award records:
 Invalid and past-dated records are skipped with a reason; if nothing usable
 loads, the synthetic data is used and a warning is logged.
 
+A first-pass collector for loyalty-program websites (`node collector/run.js`)
+writes this file; it's a work in progress, see [docs/LIVE_DATA.md](docs/LIVE_DATA.md).
+
 ## Deploy
 
 `.github/workflows/pages.yml` publishes to GitHub Pages on every push to
@@ -117,9 +130,12 @@ loads, the synthetic data is used and a warning is logged.
 
 ## Privacy
 
-No cookies, analytics or server. Saved routes, wallet balances and theme are
-stored in your browser under `pointscanner:*` keys. The page loads Tailwind
-from `cdn.tailwindcss.com` and fonts from Google Fonts.
+No cookies, analytics, server or third-party requests: fonts (Inter, JetBrains
+Mono) are self-hosted and Tailwind is compiled into `dist/pointscanner.css`.
+Saved routes, wallet balances and theme are stored in your browser under
+`pointscanner:*` keys; the in-app Privacy page lists them and can export or
+delete them. Legal pages are drafts pending review (see
+[docs/DESIGN_AUDIT.md](docs/DESIGN_AUDIT.md)).
 
 ## License
 

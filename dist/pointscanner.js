@@ -71,12 +71,20 @@ class Router {
   }
 
   render(pathChanged = false) {
-    if (typeof this.cleanup === 'function') this.cleanup();
-    this.cleanup = null;
-    const page = this.routes[this.current.path] ?? this.notFound;
-    this.onBeforeRender?.(this.current);
-    this.cleanup = page.render(this.outlet, { query: this.current.query, path: this.current.path, router: this });
-    this.onAfterRender?.(this.current, pathChanged);
+    const run = () => {
+      if (typeof this.cleanup === 'function') this.cleanup();
+      this.cleanup = null;
+      const page = this.routes[this.current.path] ?? this.notFound;
+      this.onBeforeRender?.(this.current);
+      this.cleanup = page.render(this.outlet, { query: this.current.query, path: this.current.path, router: this });
+      this.onAfterRender?.(this.current, pathChanged);
+    };
+    // Crossfade between pages where View Transitions exist; never on the first
+    // render, on in-page updates, or when the user prefers reduced motion.
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    if (pathChanged && this.rendered && document.startViewTransition && !reduce) document.startViewTransition(run);
+    else run();
+    this.rendered = true;
   }
 
   go(path, query = {}) {
@@ -96,7 +104,7 @@ class Router {
 
 // ── assets/js/util/storage.js ─────────────────────────────────────────────
 __define("util/storage.js", function (__exports, __require) {
-__export(__exports, { "loadJson": () => loadJson, "saveJson": () => saveJson });
+__export(__exports, { "loadJson": () => loadJson, "saveJson": () => saveJson, "STORAGE_PREFIX": () => STORAGE_PREFIX, "ownKeys": () => ownKeys, "exportOwnData": () => exportOwnData, "clearOwnData": () => clearOwnData });
 // localStorage can be missing or throw (private windows, blocked site data),
 // so every access degrades to "nothing saved" instead of breaking the page.
 function loadJson(key, fallback) {
@@ -116,21 +124,54 @@ function saveJson(key, value) {
     return false;
   }
 }
+
+const STORAGE_PREFIX = 'pointscanner:';
+
+function ownKeys(prefix = STORAGE_PREFIX) {
+  try {
+    const store = globalThis.localStorage;
+    if (!store) return [];
+    const keys = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (key?.startsWith(prefix)) keys.push(key);
+    }
+    return keys.sort();
+  } catch {
+    return [];
+  }
+}
+
+function exportOwnData(prefix = STORAGE_PREFIX) {
+  const out = {};
+  for (const key of ownKeys(prefix)) out[key] = loadJson(key, null);
+  return out;
+}
+
+function clearOwnData(prefix = STORAGE_PREFIX) {
+  const keys = ownKeys(prefix);
+  try {
+    for (const key of keys) globalThis.localStorage.removeItem(key);
+  } catch {
+    return 0;
+  }
+  return keys.length;
+}
 });
 
 // ── assets/js/util/theme.js ───────────────────────────────────────────────
 __define("util/theme.js", function (__exports, __require) {
-__export(__exports, { "THEMES": () => THEMES, "getTheme": () => getTheme, "applyTheme": () => applyTheme, "setTheme": () => setTheme, "nextTheme": () => nextTheme });
+__export(__exports, { "THEME_KEY": () => THEME_KEY, "THEMES": () => THEMES, "getTheme": () => getTheme, "applyTheme": () => applyTheme, "setTheme": () => setTheme, "nextTheme": () => nextTheme });
 const { loadJson, saveJson } = __require("util/storage.js");
 
-const KEY = 'pointscanner:theme';
+const THEME_KEY = 'pointscanner:theme';
 const THEMES = ['system', 'light', 'dark'];
 
 let media = null;
 let mediaListener = null;
 
 function getTheme() {
-  const t = loadJson(KEY, 'system');
+  const t = loadJson(THEME_KEY, 'system');
   return THEMES.includes(t) ? t : 'system';
 }
 
@@ -149,7 +190,7 @@ function applyTheme(theme) {
 }
 
 function setTheme(theme) {
-  saveJson(KEY, theme);
+  saveJson(THEME_KEY, theme);
   applyTheme(theme);
 }
 
@@ -1417,12 +1458,40 @@ function evaluateSaved(getRouteAwards, today) {
 }
 });
 
+// ── assets/js/components/icons.js ─────────────────────────────────────────
+__define("components/icons.js", function (__exports, __require) {
+__export(__exports, { "icon": () => icon, "routeArrow": () => routeArrow });
+// One icon set: 24px grid, 2px stroke, round caps, drawn for this project.
+// Icons are decorative (aria-hidden); the adjacent text carries the meaning.
+const PATHS = {
+  arrowRight: '<path d="M5 12h14M13 6l6 6-6 6"/>',
+  arrowLeft: '<path d="M19 12H5M11 6l-6 6 6 6"/>',
+  swap: '<path d="M7 4 3 8l4 4M3 8h14M17 20l4-4-4-4M21 16H7"/>',
+  x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  star: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  system: '<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+  light: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+  dark: '<path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>',
+};
+
+function icon(name, { size = 16, filled = false, className = '' } = {}) {
+  return `<svg class="icon ${className}" width="${size}" height="${size}" viewBox="0 0 24 24" fill="${filled ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">${PATHS[name]}</svg>`;
+}
+
+// Visual arrow between two places, read as "to" by screen readers.
+function routeArrow(size = 14) {
+  return `${icon('arrowRight', { size, className: 'text-ink-400' })}<span class="sr-only"> to </span>`;
+}
+});
+
 // ── assets/js/components/header.js ────────────────────────────────────────
 __define("components/header.js", function (__exports, __require) {
 __export(__exports, { "REPO_URL": () => REPO_URL, "NAV": () => NAV, "renderHeader": () => renderHeader, "setActiveNav": () => setActiveNav, "setSavedBadge": () => setSavedBadge, "renderFooter": () => renderFooter });
 const { esc } = __require("util/dom.js");
 const { fmtDateLong, plural } = __require("util/format.js");
 const { getTheme, nextTheme, setTheme } = __require("util/theme.js");
+const { icon } = __require("components/icons.js");
 
 const REPO_URL = 'https://github.com/zlepkowski/Point-Scanner';
 
@@ -1446,23 +1515,18 @@ const LOGO = `<svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true"
 
 const GITHUB = `<svg viewBox="0 0 16 16" width="18" height="18" aria-hidden="true" focusable="false" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>`;
 
-const THEME_ICONS = {
-  system: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>`,
-  light: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>`,
-  dark: `<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>`,
-};
 const THEME_LABEL = { system: 'System', light: 'Light', dark: 'Dark' };
 
 function navLinks(className) {
   return NAV.map(
     (n) => `<a href="#${n.path}" data-nav="${n.path}" class="${className}">${esc(n.label)}${
-      n.path === '/saved' ? '<span data-saved-badge class="badge badge-sweet ml-1.5 hidden" aria-hidden="true"></span>' : ''
+      n.path === '/saved' ? '<span data-saved-badge class="badge badge-brand ml-1.5 hidden" aria-hidden="true"></span>' : ''
     }</a>`,
   ).join('');
 }
 
-function themeButtonInner(theme) {
-  return `${THEME_ICONS[theme]}<span class="sr-only">Colour theme: ${THEME_LABEL[theme]}. Activate to change.</span>`;
+function themeButtonInner(theme, animate = false) {
+  return `${icon(theme, { size: 18, className: animate ? 'icon-swap-in' : '' })}<span class="sr-only">Colour theme: ${THEME_LABEL[theme]}. Activate to change.</span>`;
 }
 
 function renderHeader(el) {
@@ -1471,7 +1535,7 @@ function renderHeader(el) {
   const theme = getTheme();
   el.innerHTML = `
     <a href="#main" class="skip-link" data-skip>Skip to content</a>
-    <header class="sticky top-0 z-30 border-b border-ink-200 bg-ink-0/90 backdrop-blur">
+    <header class="site-header sticky top-0 z-30 border-b border-ink-200 bg-ink-0">
       <div class="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4">
         <a href="#/" class="flex items-center gap-2 rounded-lg font-semibold text-ink-900" aria-label="Pointscanner home">
           ${LOGO}<span class="text-[17px] tracking-tight">Pointscanner</span>
@@ -1480,33 +1544,41 @@ function renderHeader(el) {
         <div class="ml-auto flex items-center gap-1">
           <button type="button" class="btn btn-ghost btn-sm" data-theme-toggle title="Theme: ${THEME_LABEL[theme]}">${themeButtonInner(theme)}</button>
           <a href="${REPO_URL}" class="btn btn-ghost btn-sm" target="_blank" rel="noopener noreferrer">${GITHUB}<span class="sr-only">Source code on GitHub (opens in new tab)</span></a>
-          <button type="button" class="btn btn-sm lg:hidden" data-menu-toggle aria-expanded="false" aria-controls="mobile-nav">Menu</button>
+          <button type="button" class="btn btn-sm lg:hidden" data-menu-toggle aria-expanded="false" aria-controls="mobile-nav">${icon('menu')}Menu</button>
         </div>
       </div>
-      <nav id="mobile-nav" aria-label="Main" class="hidden border-t border-ink-200 px-4 py-2 text-sm font-medium lg:hidden">${navLinks(mobileLink)}</nav>
+      <nav id="mobile-nav" aria-label="Main" class="mobile-nav px-4 py-2 text-sm font-medium lg:hidden" data-open="false">${navLinks(mobileLink)}</nav>
     </header>`;
 
   const menuBtn = el.querySelector('[data-menu-toggle]');
   const mobileNav = el.querySelector('#mobile-nav');
-  menuBtn.addEventListener('click', () => {
-    const open = menuBtn.getAttribute('aria-expanded') !== 'true';
+  const setMenu = (open, { returnFocus = false } = {}) => {
     menuBtn.setAttribute('aria-expanded', String(open));
-    mobileNav.classList.toggle('hidden', !open);
-  });
+    mobileNav.dataset.open = String(open);
+    if (!open && returnFocus) menuBtn.focus();
+  };
+  menuBtn.addEventListener('click', () => setMenu(menuBtn.getAttribute('aria-expanded') !== 'true'));
   mobileNav.addEventListener('click', (e) => {
-    if (e.target.closest('a')) {
-      menuBtn.setAttribute('aria-expanded', 'false');
-      mobileNav.classList.add('hidden');
-    }
+    if (e.target.closest('a')) setMenu(false);
+  });
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && mobileNav.dataset.open === 'true') setMenu(false, { returnFocus: true });
+  });
+  document.addEventListener('click', (e) => {
+    if (mobileNav.dataset.open === 'true' && !el.contains(e.target)) setMenu(false);
   });
 
   const themeBtn = el.querySelector('[data-theme-toggle]');
+  const showTheme = (theme, animate) => {
+    themeBtn.innerHTML = themeButtonInner(theme, animate);
+    themeBtn.title = `Theme: ${THEME_LABEL[theme]}`;
+  };
   themeBtn.addEventListener('click', () => {
     const next = nextTheme(getTheme());
     setTheme(next);
-    themeBtn.innerHTML = themeButtonInner(next);
-    themeBtn.title = `Theme: ${THEME_LABEL[next]}`;
+    showTheme(next, true);
   });
+  document.addEventListener('pointscanner:theme-changed', () => showTheme(getTheme(), true));
 
   // Hash links to #main would be treated as routes, so move focus manually.
   el.querySelector('[data-skip]').addEventListener('click', (e) => {
@@ -1546,15 +1618,17 @@ function renderFooter(el, source, today) {
           <p class="mt-1">${esc(source?.label ?? 'Loading…')} · ${plural(source?.count ?? 0, 'award')} · as of ${esc(fmtDateLong(today))}.</p>
           ${
             synthetic
-              ? '<p class="mt-1"><span class="badge badge-sweet">Demo data</span> Generated, not real availability. Always confirm with the program before transferring points.</p>'
+              ? '<p class="mt-1"><span class="badge">Demo data</span> Generated, not real availability. Always confirm with the program before transferring points.</p>'
               : '<p class="mt-1">Loaded from your award file. Confirm with the program before transferring points.</p>'
           }
         </div>
         <div>
           <p class="font-semibold text-ink-900">Project</p>
           <ul class="mt-1 space-y-1">
-            <li><a class="link" href="#/about">Methodology &amp; privacy</a></li>
-            <li><a class="link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer">Source on GitHub</a> · MIT license</li>
+            <li class="flex flex-wrap gap-x-4"><a class="link link-target" href="#/about">Methodology</a><a class="link link-target" href="#/privacy">Privacy</a><a class="link link-target" href="#/terms">Terms</a></li>
+            <li><a class="link link-target" href="${REPO_URL}" target="_blank" rel="noopener noreferrer">Source on GitHub</a> · MIT license</li>
+            <li>Not affiliated with any airline or loyalty program.</li>
+            <li>Contact: [[TODO: contact email]]</li>
           </ul>
         </div>
       </div>
@@ -1585,8 +1659,8 @@ function airportInputHtml({ id, name, label, value = '', placeholder = 'City, IA
   return `
     <div>
       <label class="field-label" for="${id}">${esc(label)}</label>
-      <input id="${id}" name="${name}" class="input font-mono uppercase placeholder:normal-case placeholder:font-sans" list="${DATALIST_ID}"
-        value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off" autocapitalize="characters" spellcheck="false"
+      <input id="${id}" name="${name}" class="input" list="${DATALIST_ID}"
+        value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false"
         ${hintId ? `aria-describedby="${hintId}"` : ''} />
       ${hint ? `<p id="${hintId}" class="mt-1 text-xs text-ink-500">${esc(hint)}</p>` : ''}
     </div>`;
@@ -1599,10 +1673,11 @@ __export(__exports, { "programSwatch": () => programSwatch, "programTag": () => 
 const { programById } = __require("data/programs.js");
 const { CABIN_SHORT, fmtScore } = __require("util/format.js");
 const { esc } = __require("util/dom.js");
+const { icon } = __require("components/icons.js");
 
 function programSwatch(programId) {
   const color = programById.get(programId)?.color ?? '#94a3b8';
-  return `<span class="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style="background:${esc(color)}" aria-hidden="true"></span>`;
+  return `<span class="swatch" style="background:${esc(color)}" aria-hidden="true"></span>`;
 }
 
 function programTag(programId) {
@@ -1620,7 +1695,7 @@ function cabinBadge(cabin) {
 function scoreBadge(score, sweet) {
   const title = `Deal score ${score.toFixed(2)}× the program's baseline value per point`;
   return sweet
-    ? `<span class="badge badge-sweet" title="${esc(title)}"><span aria-hidden="true">★</span> ${fmtScore(score)}<span class="sr-only"> deal score, sweet spot</span></span>`
+    ? `<span class="badge badge-sweet" title="${esc(title)}">${icon('star', { size: 12, filled: true })} ${fmtScore(score)}<span class="sr-only"> deal score, sweet spot</span></span>`
     : `<span class="badge tabular" title="${esc(title)}">${fmtScore(score)}<span class="sr-only"> deal score</span></span>`;
 }
 
@@ -1641,6 +1716,7 @@ const { esc } = __require("util/dom.js");
 const { buildHash } = __require("util/router.js");
 const { CABIN_LABEL, fmtDate, fmtDuration, fmtNumber, fmtStops, fmtUsd, plural } = __require("util/format.js");
 const { programTag, scoreBadge } = __require("components/badges.js");
+const { routeArrow } = __require("components/icons.js");
 
 const city = (iata) => airportByIata.get(iata)?.city ?? iata;
 
@@ -1651,7 +1727,7 @@ function awardCardHtml(a, { heading = 'route', note = '' } = {}) {
   const title =
     heading === 'destination'
       ? `<h3 class="text-base font-semibold text-ink-900">${esc(city(a.to))} <span class="font-mono text-sm font-medium text-ink-500">${esc(a.to)}</span></h3>`
-      : `<h3 class="font-mono text-lg font-semibold tracking-tight text-ink-900">${esc(a.from)} <span aria-hidden="true" class="text-ink-400">→</span><span class="sr-only"> to </span> ${esc(a.to)}</h3>
+      : `<h3 class="flex items-center gap-1.5 font-mono text-lg font-semibold tracking-tight text-ink-900">${esc(a.from)} ${routeArrow(16)} ${esc(a.to)}</h3>
          <p class="text-sm text-ink-600">${esc(city(a.from))} to ${esc(city(a.to))}</p>`;
   const meta = [fmtStops(a.stops), a.durationHours ? fmtDuration(a.durationHours) : null, plural(a.seats, 'seat')].filter(Boolean).join(' · ');
 
@@ -1675,8 +1751,8 @@ function awardCardHtml(a, { heading = 'route', note = '' } = {}) {
       </dl>
       <p class="text-xs text-ink-500">${esc(meta)}${note ? ` · ${esc(note)}` : ''}</p>
       <div class="mt-auto flex flex-wrap gap-x-4 gap-y-1 border-t border-ink-100 pt-3 text-sm">
-        <a class="link" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}">Calendar</a>
-        <a class="link" href="${buildHash('/search', { from: a.from, to: a.to, cabins: a.cabin })}">All dates</a>
+        <a class="link link-target" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}">Calendar</a>
+        <a class="link link-target" href="${buildHash('/search', { from: a.from, to: a.to, cabins: a.cabin })}">All dates</a>
       </div>
     </article>`;
 }
@@ -1692,7 +1768,7 @@ function skeletonCards(n = 3) {
 
 // ── assets/js/pages/home.js ───────────────────────────────────────────────
 __define("pages/home.js", function (__exports, __require) {
-__export(__exports, { "render": () => render });
+__export(__exports, { "valueExample": () => valueExample, "render": () => render });
 const { getAwards, getIndexes, getSource } = __require("data/store.js");
 const { PROGRAMS } = __require("data/programs.js");
 const { REGIONS, regionOf, resolveLocation } = __require("data/airports.js");
@@ -1702,7 +1778,11 @@ const { programSwatch } = __require("components/badges.js");
 const { esc, mount } = __require("util/dom.js");
 const { buildHash } = __require("util/router.js");
 const { CABINS, CABIN_LABEL, fmtNumber } = __require("util/format.js");
-const { SWEET_SPOT_THRESHOLD } = __require("util/cpm.js");
+const { SWEET_SPOT_THRESHOLD, baselineCents } = __require("util/cpm.js");
+const { icon, routeArrow } = __require("components/icons.js");
+const { airportLabel } = __require("data/airports.js");
+const { programById } = __require("data/programs.js");
+const { fmtCpm, fmtScore, fmtUsd } = __require("util/format.js");
 
 function topDistinct(list, keyFn, n) {
   const seen = new Set();
@@ -1719,6 +1799,43 @@ function topDistinct(list, keyFn, n) {
 
 const byScore = (a, b) => b.score - a.score || a.miles - b.miles;
 
+// The clearest "fewer miles isn't always better" pair in the current data:
+// same route, business class, one award cheaper in miles but worse value.
+function valueExample(awards) {
+  const byRoute = new Map();
+  for (const a of awards) {
+    if (a.cabin !== 'business') continue;
+    const key = a.from + a.to;
+    (byRoute.get(key) ?? byRoute.set(key, []).get(key)).push(a);
+  }
+  let best = null;
+  for (const list of byRoute.values()) {
+    if (list.length < 2) continue;
+    const top = list.reduce((x, y) => (y.score > x.score ? y : x));
+    for (const a of list) {
+      if (a.programId === top.programId || a.miles >= top.miles) continue;
+      const gap = top.score - a.score;
+      if (!best || gap > best.gap) best = { better: top, cheaper: a, gap };
+    }
+  }
+  return best;
+}
+
+function exampleSideHtml(a, verdict) {
+  const program = programById.get(a.programId);
+  return `
+    <div class="card p-5">
+      <p class="text-sm font-semibold text-ink-700">${esc(verdict)}</p>
+      <p class="mt-2 flex flex-wrap items-baseline gap-x-2"><span class="text-3xl font-semibold tabular text-ink-900">${fmtNumber(a.miles)}</span>
+        <span class="text-ink-600">${esc(program.currency)} + ${fmtUsd(a.taxesUsd)}</span></p>
+      <dl class="mt-3 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+        <dt class="text-ink-600">Value per point</dt><dd class="tabular text-ink-900">${fmtCpm(a.cpm)}</dd>
+        <dt class="text-ink-600">${esc(program.name)} usually</dt><dd class="tabular text-ink-900">${fmtCpm(baselineCents(a.programId))}</dd>
+        <dt class="text-ink-600">Deal score</dt><dd class="tabular font-semibold text-ink-900">${fmtScore(a.score)}${a.sweet ? ' · sweet spot' : ''}</dd>
+      </dl>
+    </div>`;
+}
+
 function render(root, { router }) {
   const awards = getAwards();
   const source = getSource();
@@ -1731,10 +1848,11 @@ function render(root, { router }) {
     picks: topDistinct(premium.filter((a) => regionOf(a.to) === region), (a) => a.from + a.to, 3),
   })).filter((r) => r.picks.length);
 
+  const example = valueExample(awards);
   const stat = (value, label) => `
-    <div class="card px-4 py-3">
-      <dd class="text-2xl font-semibold tabular text-ink-900">${value}</dd>
+    <div class="flex flex-col-reverse">
       <dt class="text-sm text-ink-600">${label}</dt>
+      <dd class="text-2xl font-semibold tabular text-ink-900">${value}</dd>
     </div>`;
 
   mount(
@@ -1742,11 +1860,11 @@ function render(root, { router }) {
     `
     <section class="grid items-center gap-8 lg:grid-cols-[1.1fr_1fr]">
       <div>
-        ${source?.kind === 'synthetic' ? '<p class="mb-4"><span class="badge badge-sweet">Demo data</span> <span class="text-sm text-ink-600">Availability is generated, not live.</span></p>' : ''}
-        <h1 tabindex="-1" class="text-3xl font-bold tracking-tight text-ink-900 sm:text-5xl">Find the award seats worth your points.</h1>
+        ${source?.kind === 'synthetic' ? '<p class="mb-4"><span class="badge">Demo data</span> <span class="text-sm text-ink-600">Availability is generated, not live.</span></p>' : ''}
+        <h1 tabindex="-1" class="max-w-[18ch] text-3xl font-bold tracking-tight text-ink-900 sm:text-5xl">Find the award seats worth your points.</h1>
         <p class="mt-4 max-w-xl text-lg text-ink-600">
-          Pointscanner scans award space across ${PROGRAMS.length} loyalty programs and scores every seat against what
-          those points are normally worth, so 60k in one program and 90k in another are finally comparable.
+          Pointscanner compares award seats across ${PROGRAMS.length} loyalty programs and scores each one against an estimate
+          of what those points are usually worth, so 60k in one program and 90k in another can be compared fairly.
         </p>
         <p class="mt-3 text-sm text-ink-500">Free and open source. No account, no email, no tracking.</p>
       </div>
@@ -1765,12 +1883,28 @@ function render(root, { router }) {
       </form>
     </section>
 
-    <dl class="mt-10 grid grid-cols-2 gap-3 md:grid-cols-4">
-      ${stat(fmtNumber(awards.length), 'award seats scanned')}
+    <dl class="mt-10 grid grid-cols-2 gap-x-6 gap-y-4 border-y border-ink-200 py-5 md:grid-cols-4">
+      ${stat(fmtNumber(awards.length), source?.kind === 'synthetic' ? 'sample award seats' : 'award seats loaded')}
       ${stat(fmtNumber(getIndexes().byRoute.size), 'routes')}
       ${stat(PROGRAMS.length, 'loyalty programs')}
       ${stat(fmtNumber(sweetSpots.length), 'sweet spots')}
     </dl>
+
+    ${
+      example
+        ? `<section class="mt-12" aria-labelledby="value-heading">
+            <h2 id="value-heading" class="text-xl font-semibold text-ink-900">Fewer miles isn't always the better deal</h2>
+            <p class="mb-4 mt-1 flex flex-wrap items-center gap-x-1.5 text-sm text-ink-600">A comparison from the current data:
+              ${esc(airportLabel(example.better.from))} ${routeArrow(12)} ${esc(airportLabel(example.better.to))}, business class.</p>
+            <div class="grid gap-4 md:grid-cols-2">
+              ${exampleSideHtml(example.cheaper, 'Fewer points')}
+              ${exampleSideHtml(example.better, 'Better value')}
+            </div>
+            <p class="mt-3 max-w-3xl text-sm text-ink-600">The deal score divides what each point is worth on this ticket (estimated cash
+              fare minus taxes, per point) by what that program's points are usually worth. <a class="link" href="#/about">How it's calculated</a>.</p>
+          </section>`
+        : ''
+    }
 
     <section class="mt-12" aria-labelledby="sweet-heading">
       <div class="mb-4 flex flex-wrap items-end justify-between gap-2">
@@ -1778,7 +1912,7 @@ function render(root, { router }) {
           <h2 id="sweet-heading" class="text-xl font-semibold text-ink-900">Today's sweet spots</h2>
           <p class="text-sm text-ink-600">Awards returning at least ${SWEET_SPOT_THRESHOLD}× their program's baseline value per point.</p>
         </div>
-        <a class="link text-sm" href="${buildHash('/search', { sweet: true, sort: 'score' })}">See all ${fmtNumber(sweetSpots.length)} →</a>
+        <a class="link link-target text-sm" href="${buildHash('/search', { sweet: true, sort: 'score' })}">See all ${fmtNumber(sweetSpots.length)} ${icon('arrowRight', { size: 14 })}</a>
       </div>
       ${todaysPicks.length ? cardGridHtml(todaysPicks.map((a) => awardCardHtml(a))) : '<p class="text-ink-600">No sweet spots in the current data.</p>'}
     </section>
@@ -1793,7 +1927,7 @@ function render(root, { router }) {
           <div>
             <div class="mb-3 flex items-baseline justify-between gap-2">
               <h3 class="font-semibold text-ink-800">${esc(region)}</h3>
-              <a class="link text-sm" href="${buildHash('/search', { to: region, cabins: 'business,first', sort: 'score' })}">More into ${esc(region)} →</a>
+              <a class="link link-target text-sm" href="${buildHash('/search', { to: region, cabins: 'business,first', sort: 'score' })}">More into ${esc(region)} ${icon('arrowRight', { size: 14 })}</a>
             </div>
             ${cardGridHtml(picks.map((a) => awardCardHtml(a)))}
           </div>`,
@@ -1803,19 +1937,12 @@ function render(root, { router }) {
     </section>
 
     <section class="mt-12" aria-labelledby="programs-heading">
-      <h2 id="programs-heading" class="mb-3 text-xl font-semibold text-ink-900">Programs we scan</h2>
+      <h2 id="programs-heading" class="mb-3 text-xl font-semibold text-ink-900">Programs covered</h2>
       <ul class="flex flex-wrap gap-2">
         ${PROGRAMS.map(
           (p) => `<li><a class="chip" href="${buildHash('/search', { programs: p.id, sort: 'score' })}">${programSwatch(p.id)} ${esc(p.name)}</a></li>`,
         ).join('')}
       </ul>
-    </section>
-
-    <section class="card mt-12 grid gap-4 p-6 md:grid-cols-3" aria-labelledby="how-heading">
-      <h2 id="how-heading" class="sr-only">How it works</h2>
-      <div><p class="font-semibold text-ink-900">1 · Normalised deal score</p><p class="mt-1 text-sm text-ink-600">Every seat is priced in cents per point against an estimated cash fare, then divided by that program's baseline value. 2.0× means twice the usual value.</p></div>
-      <div><p class="font-semibold text-ink-900">2 · Calendar heatmap</p><p class="mt-1 text-sm text-ink-600">See 60 days of a route at a glance and spot the cheap week in a second.</p></div>
-      <div><p class="font-semibold text-ink-900">3 · Saved routes</p><p class="mt-1 text-sm text-ink-600">Save a route and Pointscanner shows what opened up or got cheaper since your last visit. Stored in your browser only.</p></div>
     </section>`,
   );
 
@@ -2034,7 +2161,7 @@ function awardTableHtml(rows, { sort = 'score', dir = 'desc', caption = 'Award a
         <td class="num text-ink-700">${a.seats}</td>
         <td>${scoreBadge(a.score, a.sweet)}</td>
         <td class="whitespace-nowrap text-right">
-          <a class="link text-sm" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}"
+          <a class="link link-target text-sm" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}"
             aria-label="Calendar for ${esc(a.from)} to ${esc(a.to)}, ${esc(a.cabin)}">Calendar</a>
         </td>
       </tr>`,
@@ -2121,6 +2248,7 @@ const { programById } = __require("data/programs.js");
 const { esc } = __require("util/dom.js");
 const { CABIN_LABEL, fmtDate, fmtDuration, fmtNumber, fmtUsd } = __require("util/format.js");
 const { cabinBadge, mixedCabinBadge, programTag, scoreBadge } = __require("components/badges.js");
+const { icon } = __require("components/icons.js");
 
 const city = (iata) => airportByIata.get(iata)?.city ?? iata;
 
@@ -2146,10 +2274,10 @@ function connectionItemHtml(it) {
     <li class="card p-4">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <p class="font-mono text-base font-semibold text-ink-900">
-            ${esc(it.from)} <span aria-hidden="true" class="text-ink-400">→</span>
+          <p class="flex items-center gap-1.5 font-mono text-base font-semibold text-ink-900">
+            ${esc(it.from)} ${icon('arrowRight', { size: 14, className: 'text-ink-400' })}
             <span class="rounded bg-brand-100 px-1 text-brand-800">${esc(it.via)}</span>
-            <span aria-hidden="true" class="text-ink-400">→</span> ${esc(it.to)}
+            ${icon('arrowRight', { size: 14, className: 'text-ink-400' })} ${esc(it.to)}
             <span class="sr-only">, connecting in ${esc(city(it.via))}</span>
           </p>
           <p class="text-sm text-ink-600">${fmtDate(it.date)} · ${layover}${it.durationHours ? ` · ${fmtDuration(it.durationHours)} total` : ''}</p>
@@ -2168,6 +2296,26 @@ function connectionItemHtml(it) {
 }
 });
 
+// ── assets/js/util/number.js ──────────────────────────────────────────────
+__define("util/number.js", function (__exports, __require) {
+__export(__exports, { "parseAmount": () => parseAmount });
+// Postel's law for amounts: accept "90000", "90,000", "90 000", "90k", "1.5m",
+// "$250" or "75k points" and return a whole number, or null when empty or
+// unreadable (callers treat null as "no limit").
+function parseAmount(input) {
+  if (input === undefined || input === null) return null;
+  const s = String(input)
+    .trim()
+    .toLowerCase()
+    .replace(/[$€£,\s_]/g, '')
+    .replace(/(miles?|points?|pts|usd)$/, '');
+  const m = s.match(/^(\d+(?:\.\d+)?)(k|m)?$/);
+  if (!m) return null;
+  const n = Number(m[1]) * (m[2] === 'k' ? 1e3 : m[2] === 'm' ? 1e6 : 1);
+  return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+}
+});
+
 // ── assets/js/components/filters.js ───────────────────────────────────────
 __define("components/filters.js", function (__exports, __require) {
 __export(__exports, { "DEFAULT_FILTERS": () => DEFAULT_FILTERS, "filtersFromQuery": () => filtersFromQuery, "filtersToQuery": () => filtersToQuery, "activeFilterCount": () => activeFilterCount, "matchesFilters": () => matchesFilters, "applyFilters": () => applyFilters, "filtersPanelHtml": () => filtersPanelHtml, "readFiltersForm": () => readFiltersForm, "bindProgramShortcuts": () => bindProgramShortcuts });
@@ -2176,6 +2324,8 @@ const { CABINS } = __require("util/format.js");
 const { isIsoDate } = __require("util/date.js");
 const { esc } = __require("util/dom.js");
 const { programSwatch } = __require("components/badges.js");
+const { icon } = __require("components/icons.js");
+const { parseAmount } = __require("util/number.js");
 const { cabinChipsHtml, readChips } = __require("components/cabinChips.js");
 
 const DEFAULT_FILTERS = Object.freeze({
@@ -2191,11 +2341,7 @@ const DEFAULT_FILTERS = Object.freeze({
 });
 
 const splitList = (s) => (s ? String(s).split(',').map((x) => x.trim()).filter(Boolean) : []);
-const positive = (s) => {
-  if (s === undefined || s === null || s === '') return null;
-  const n = Number(s);
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
+const positive = parseAmount;
 
 function filtersFromQuery(q = {}) {
   const cabins = splitList(q.cabins).filter((c) => CABINS.includes(c));
@@ -2274,15 +2420,14 @@ function programGroupHtml(alliance, f) {
       <div class="mb-1 flex items-center justify-between">
         <legend id="${gid}" class="text-xs font-semibold uppercase tracking-wide text-ink-500">${esc(label)}</legend>
         <span class="flex gap-1 text-xs">
-          <button type="button" class="link" data-programs-all="${esc(alliance)}" aria-label="Select all ${esc(label)} programs">All</button>
-          <span aria-hidden="true" class="text-ink-400">/</span>
-          <button type="button" class="link" data-programs-none="${esc(alliance)}" aria-label="Clear ${esc(label)} programs">None</button>
+          <button type="button" class="link link-target px-1" data-programs-all="${esc(alliance)}" aria-label="Select all ${esc(label)} programs">All</button>
+          <button type="button" class="link link-target px-1" data-programs-none="${esc(alliance)}" aria-label="Clear ${esc(label)} programs">None</button>
         </span>
       </div>
       ${programs
         .map(
           (p) => `
-        <label class="flex items-center gap-2 py-0.5 text-sm text-ink-800">
+        <label class="flex min-h-[28px] items-center gap-2 text-sm text-ink-800">
           <input type="checkbox" class="checkbox" name="program" value="${p.id}" ${!f.programs || f.programs.includes(p.id) ? 'checked' : ''} />
           ${programSwatch(p.id)} <span class="truncate">${esc(p.name)}</span>
         </label>`,
@@ -2314,10 +2459,10 @@ function filtersPanelHtml(f, { window }) {
       <fieldset class="space-y-2">
         <legend class="field-label">Price &amp; seats</legend>
         <label class="block text-xs text-ink-600">Max miles / points
-          <input type="number" inputmode="numeric" name="maxMiles" class="input mt-1 tabular" min="0" step="5000" placeholder="Any" value="${f.maxMiles ?? ''}" />
+          <input type="text" inputmode="numeric" autocomplete="off" data-amount name="maxMiles" class="input mt-1 tabular" placeholder="Any, e.g. 80k" value="${f.maxMiles ?? ''}" />
         </label>
         <label class="block text-xs text-ink-600">Max taxes &amp; fees (USD)
-          <input type="number" inputmode="numeric" name="maxTaxes" class="input mt-1 tabular" min="0" step="25" placeholder="Any" value="${f.maxTaxes ?? ''}" />
+          <input type="text" inputmode="numeric" autocomplete="off" data-amount name="maxTaxes" class="input mt-1 tabular" placeholder="Any, e.g. 200" value="${f.maxTaxes ?? ''}" />
         </label>
         <label class="block text-xs text-ink-600">Seats needed
           <select name="minSeats" class="input mt-1">
@@ -2332,14 +2477,15 @@ function filtersPanelHtml(f, { window }) {
         </label>
         <label class="flex items-center gap-2 text-sm text-ink-800">
           <input type="checkbox" class="checkbox" name="sweetOnly" ${f.sweetOnly ? 'checked' : ''} />
-          <span>Sweet spots only <span class="badge badge-sweet ml-1" aria-hidden="true">★</span></span>
+          <span>Sweet spots only <span class="badge badge-sweet ml-1" aria-hidden="true">${icon('star', { size: 12, filled: true })}</span></span>
         </label>
       </div>
 
-      <div>
-        <span class="field-label">Programs</span>
-        ${ALLIANCES.map((a) => programGroupHtml(a, f)).join('')}
-      </div>
+      <details ${f.programs ? 'open' : ''}>
+        <summary class="cursor-pointer py-1 text-[13px] font-semibold text-ink-700">Programs
+          <span class="font-normal text-ink-600">(${f.programs ? `${f.programs.length} of ${PROGRAMS.length}` : `all ${PROGRAMS.length}`})</span></summary>
+        <div class="mt-2">${ALLIANCES.map((a) => programGroupHtml(a, f)).join('')}</div>
+      </details>
 
       <button type="button" class="btn w-full" data-reset-filters>Reset filters</button>
     </form>`;
@@ -2381,6 +2527,7 @@ function bindProgramShortcuts(form, onChange) {
 __define("components/pager.js", function (__exports, __require) {
 __export(__exports, { "pageCountFor": () => pageCountFor, "pagerHtml": () => pagerHtml });
 const { fmtNumber } = __require("util/format.js");
+const { icon } = __require("components/icons.js");
 
 function pageList(page, count) {
   const pages = new Set([1, count, page - 1, page, page + 1]);
@@ -2414,9 +2561,9 @@ function pagerHtml({ page, total, pageSize }) {
     <nav class="flex flex-wrap items-center justify-between gap-3 pt-4" aria-label="Results pages">
       <p class="text-sm text-ink-600 tabular">Showing ${fmtNumber(first)}–${fmtNumber(last)} of ${fmtNumber(total)}</p>
       <div class="flex flex-wrap items-center gap-1">
-        ${btn(page - 1, '← Prev', { disabled: page <= 1, aria: 'Previous page' })}
+        ${btn(page - 1, `${icon('arrowLeft')}Prev`, { disabled: page <= 1, aria: 'Previous page' })}
         ${items}
-        ${btn(page + 1, 'Next →', { disabled: page >= count, aria: 'Next page' })}
+        ${btn(page + 1, `Next${icon('arrowRight')}`, { disabled: page >= count, aria: 'Next page' })}
       </div>
     </nav>`;
 }
@@ -2439,6 +2586,7 @@ const { announce, debounce, esc, mount, on } = __require("util/dom.js");
 const { buildHash } = __require("util/router.js");
 const { CABINS, CABIN_SHORT, fmtNumber, plural } = __require("util/format.js");
 const { programName } = __require("data/programs.js");
+const { icon, routeArrow } = __require("components/icons.js");
 
 const PAGE_SIZE = 50;
 const CONNECTION_STEP = 10;
@@ -2492,6 +2640,7 @@ function saveTarget(state, from, to) {
 function render(root, { query, router }) {
   const state = stateFromQuery(query);
   let connectionLimit = CONNECTION_STEP;
+  let justSaved = false;
   const win = getWindow();
 
   mount(
@@ -2503,7 +2652,7 @@ function render(root, { query, router }) {
     </div>
     <form id="route-form" class="card grid gap-3 p-4 md:grid-cols-[1fr_auto_1fr_auto] md:items-end" role="search" aria-label="Route">
       ${airportInputHtml({ id: 'from', name: 'from', label: 'From', value: state.from, placeholder: 'Anywhere' })}
-      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end md:my-0 md:mb-1 md:justify-self-auto" data-swap aria-label="Swap origin and destination">⇄</button>
+      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end md:my-0 md:mb-1 md:justify-self-auto" data-swap aria-label="Swap origin and destination">${icon('swap', { size: 18 })}</button>
       ${airportInputHtml({ id: 'to', name: 'to', label: 'To', value: state.to, placeholder: 'Anywhere' })}
       <button class="btn btn-primary" type="submit">Search</button>
     </form>
@@ -2565,8 +2714,8 @@ function render(root, { query, router }) {
           <a class="btn btn-sm" href="${buildHash('/calendar', { from: target.from, to: target.to, cabin: target.cabin === 'any' ? 'business' : target.cabin, program: target.programId })}">Calendar view</a>
           ${
             saved
-              ? `<a class="btn btn-sm" href="#/saved"><span aria-hidden="true">★</span> Saved, view alerts</a>`
-              : `<button type="button" class="btn btn-sm" data-save-route><span aria-hidden="true">☆</span> Save route${target.cabin !== 'any' ? ` (${esc(CABIN_SHORT[target.cabin])})` : ''}</button>`
+              ? `<a class="btn btn-sm ${justSaved ? 'pulse-once' : ''}" href="#/saved">${icon('star', { filled: true, className: 'text-brand-600' })}Saved, view alerts</a>`
+              : `<button type="button" class="btn btn-sm" data-save-route>${icon('star')}Save route${target.cabin !== 'any' ? ` (${esc(CABIN_SHORT[target.cabin])})` : ''}</button>`
           }
         </div>`
       : '';
@@ -2576,7 +2725,7 @@ function render(root, { query, router }) {
       <div class="mb-3 flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="results-heading" class="text-lg font-semibold text-ink-900">${plural(rows.length, 'award')}</h2>
-          <p class="text-sm text-ink-600">${esc(describe(from))} → ${esc(describe(to))} · ${esc(cabins)}${
+          <p class="text-sm text-ink-600">${esc(describe(from))} ${routeArrow(12)} ${esc(describe(to))} · ${esc(cabins)}${
             state.filters.programs ? ` · ${state.filters.programs.length === 1 ? esc(programName(state.filters.programs[0])) : `${state.filters.programs.length} programs`}` : ''
           } · ${plural(sweetCount, 'sweet spot')}</p>
         </div>
@@ -2690,9 +2839,9 @@ function render(root, { query, router }) {
   });
 
   const offs = [
-    on(panel, 'input', 'input[type="number"]', onFiltersChangedSoon),
+    on(panel, 'input', 'input[data-amount]', onFiltersChangedSoon),
     on(panel, 'change', 'input, select', (e, el) => {
-      if (el.type !== 'number') onFiltersChanged();
+      if (!el.hasAttribute('data-amount')) onFiltersChanged();
     }),
     bindChips(panel, onFiltersChanged),
     on(root, 'click', '[data-reset-filters]', resetFilters),
@@ -2712,7 +2861,10 @@ function render(root, { query, router }) {
       const target = saveTarget(state, resolveLocation(state.from), resolveLocation(state.to));
       if (!target) return;
       addSaved(target, awardsOnRoute(target.from, target.to));
+      justSaved = true;
       renderResults();
+      justSaved = false;
+      resultsEl.querySelector('a[href="#/saved"]')?.focus();
       document.dispatchEvent(new CustomEvent('pointscanner:saved-changed'));
       announce(`Saved ${target.from} to ${target.to}. You'll see changes on the Saved page.`);
     }),
@@ -2735,6 +2887,7 @@ const { airportInputHtml } = __require("components/airportSelect.js");
 const { awardCardHtml, cardGridHtml } = __require("components/awardCard.js");
 const { bindChips, cabinChipsHtml } = __require("components/cabinChips.js");
 const { announce, esc, mount } = __require("util/dom.js");
+const { icon } = __require("components/icons.js");
 const { buildHash } = __require("util/router.js");
 const { CABINS, CABIN_LABEL, plural } = __require("util/format.js");
 
@@ -2819,7 +2972,7 @@ function render(root, { query, router }) {
                 <span class="ml-1 text-sm font-normal text-ink-500">${plural(g.rows.length, 'destination')}</span></h2>
               ${
                 g.rows.length > PER_REGION
-                  ? `<a class="link text-sm" href="${buildHash('/search', { from: state.from, to: g.region, cabins: state.cabin, sort: state.sort === 'score' ? null : 'miles' })}">View all ${g.rows.length} in Search →</a>`
+                  ? `<a class="link link-target text-sm" href="${buildHash('/search', { from: state.from, to: g.region, cabins: state.cabin, sort: state.sort === 'score' ? null : 'miles' })}">View all ${g.rows.length} in Search ${icon('arrowRight', { size: 14 })}</a>`
                   : ''
               }
             </div>
@@ -2881,6 +3034,7 @@ const { airportInputHtml } = __require("components/airportSelect.js");
 const { awardTableHtml, nextSort, sortAwards } = __require("components/awardTable.js");
 const { bindChips, cabinChipsHtml } = __require("components/cabinChips.js");
 const { announce, esc, mount, on } = __require("util/dom.js");
+const { icon, routeArrow } = __require("components/icons.js");
 const { buildHash } = __require("util/router.js");
 const { addDays, dateRange, dayOfWeek } = __require("util/date.js");
 const { CABINS, CABIN_LABEL, CABIN_SHORT, fmtDate, fmtDateLong, fmtMilesShort, fmtMonth, fmtNumber, fmtScore, fmtUsd, plural } = __require("util/format.js");
@@ -2990,7 +3144,7 @@ function tooltipHtml(day) {
     <p class="mt-1"><span class="text-base font-semibold tabular">${fmtNumber(a.miles)}</span> ${esc(program?.currency ?? 'miles')} + ${fmtUsd(a.taxesUsd)}</p>
     <p>${esc(airlineName(a.airline))} ${esc(a.flightNo)}${a.departTime ? ` · dep ${esc(a.departTime)}` : ''}</p>
     <p>Book via ${esc(program?.name ?? a.programId)} · ${plural(a.seats, 'seat')}</p>
-    <p>Value ${fmtScore(a.score)}${a.sweet ? ' · ★ sweet spot' : ''}</p>
+    <p>Value ${fmtScore(a.score)}${a.sweet ? ' · sweet spot' : ''}</p>
     ${day.all.length > 1 ? `<p class="mt-1 opacity-75">+${day.all.length - 1} more option${day.all.length === 2 ? '' : 's'} this day</p>` : ''}`;
 }
 
@@ -3015,7 +3169,7 @@ function render(root, { query, router }) {
     </div>
     <form id="cal-form" class="card grid gap-4 p-4 lg:grid-cols-[1fr_auto_1fr_auto_minmax(0,14rem)] lg:items-end" aria-label="Calendar options">
       ${airportInputHtml({ id: 'cal-from', name: 'from', label: 'From', value: state.from })}
-      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end lg:my-0 lg:mb-1 lg:justify-self-auto" data-swap aria-label="Swap origin and destination">⇄</button>
+      <button type="button" class="btn btn-ghost btn-sm -my-1 justify-self-end lg:my-0 lg:mb-1 lg:justify-self-auto" data-swap aria-label="Swap origin and destination">${icon('swap', { size: 18 })}</button>
       ${airportInputHtml({ id: 'cal-to', name: 'to', label: 'To', value: state.to })}
       <div>
         <span class="field-label">Cabin</span>
@@ -3038,6 +3192,7 @@ function render(root, { query, router }) {
   const body = root.querySelector('#cal-body');
   const tip = root.querySelector('#heat-tip');
   let days = [];
+  let justSaved = false;
 
   function routeAwards() {
     return awardsOnRoute(state.from, state.to).filter((a) => a.cabin === state.cabin && (!state.program || a.programId === state.program));
@@ -3079,7 +3234,7 @@ function render(root, { query, router }) {
       <div class="card p-4 sm:p-6">
         <div class="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h2 class="text-lg font-semibold text-ink-900">${esc(airportLabel(state.from))} → ${esc(airportLabel(state.to))}</h2>
+            <h2 class="text-lg font-semibold text-ink-900">${esc(airportLabel(state.from))} ${routeArrow(16)} ${esc(airportLabel(state.to))}</h2>
             <p class="text-sm text-ink-600">${esc(CABIN_LABEL[state.cabin])} · ${state.program ? esc(programName(state.program)) : 'All programs'} ·
               ${withSpace.length} of ${WINDOW_DAYS} days with space${cheapest ? ` · cheapest ${fmtNumber(cheapest.best.miles)} on ${esc(fmtDate(cheapest.date))}` : ''}${sweetDays ? ` · ${plural(sweetDays, 'sweet-spot day')}` : ''}</p>
           </div>
@@ -3087,8 +3242,8 @@ function render(root, { query, router }) {
             <a class="btn btn-sm" href="${buildHash('/search', { from: state.from, to: state.to, cabins: state.cabin, programs: state.program || null, sort: 'date' })}">List view</a>
             ${
               saved
-                ? '<a class="btn btn-sm" href="#/saved"><span aria-hidden="true">★</span> Saved, view alerts</a>'
-                : `<button type="button" class="btn btn-sm" data-save-route><span aria-hidden="true">☆</span> Save route</button>`
+                ? `<a class="btn btn-sm ${justSaved ? 'pulse-once' : ''}" href="#/saved">${icon('star', { filled: true, className: 'text-brand-600' })}Saved, view alerts</a>`
+                : `<button type="button" class="btn btn-sm" data-save-route>${icon('star')}Save route</button>`
             }
           </div>
         </div>
@@ -3122,6 +3277,7 @@ function render(root, { query, router }) {
     const above = r.top - t.height - 8;
     tip.style.left = `${left}px`;
     tip.style.top = `${above > 8 ? above : r.bottom + 8}px`;
+    tip.style.setProperty('--tip-origin', above > 8 ? 'bottom center' : 'top center');
   }
   const hideTip = () => {
     tip.hidden = true;
@@ -3211,7 +3367,10 @@ function render(root, { query, router }) {
     }),
     on(body, 'click', '[data-save-route]', () => {
       addSaved({ from: state.from, to: state.to, cabin: state.cabin, programId: state.program || null }, awardsOnRoute(state.from, state.to));
+      justSaved = true;
       renderBody();
+      justSaved = false;
+      body.querySelector('a[href="#/saved"]')?.focus();
       document.dispatchEvent(new CustomEvent('pointscanner:saved-changed'));
       announce(`Saved ${state.from} to ${state.to}.`);
     }),
@@ -3313,6 +3472,8 @@ const { awardCardHtml, cardGridHtml } = __require("components/awardCard.js");
 const { awardTableHtml, sortAwards } = __require("components/awardTable.js");
 const { bindChips, cabinChipsHtml } = __require("components/cabinChips.js");
 const { programSwatch } = __require("components/badges.js");
+const { icon } = __require("components/icons.js");
+const { parseAmount } = __require("util/number.js");
 const { announce, debounce, esc, mount, on } = __require("util/dom.js");
 const { buildHash } = __require("util/router.js");
 const { CABINS, CABIN_SHORT, fmtNumber, plural } = __require("util/format.js");
@@ -3333,9 +3494,9 @@ function balanceRowHtml(b, i) {
       </div>
       <div>
         <label class="field-label ${i ? 'sr-only' : ''}" for="bal-amt-${i}">Balance</label>
-        <input id="bal-amt-${i}" name="amount" type="number" inputmode="numeric" min="0" step="1000" class="input tabular" value="${b.amount || ''}" placeholder="e.g. 75000" />
+        <input id="bal-amt-${i}" name="amount" type="text" inputmode="numeric" autocomplete="off" class="input tabular" value="${b.amount || ''}" placeholder="e.g. 75k" />
       </div>
-      <button type="button" class="btn btn-ghost" data-remove-balance="${i}" aria-label="Remove ${esc(programById.get(b.programId)?.name ?? 'program')} balance">✕</button>
+      <button type="button" class="btn btn-ghost" data-remove-balance="${i}" aria-label="Remove ${esc(programById.get(b.programId)?.name ?? 'program')} balance">${icon('x')}</button>
     </div>`;
 }
 
@@ -3386,7 +3547,7 @@ function render(root, { query, router }) {
   function readRows() {
     state.balances = [...rowsEl.querySelectorAll('[data-balance-row]')].map((row) => ({
       programId: row.querySelector('[name="programId"]').value,
-      amount: Math.max(0, Math.round(Number(row.querySelector('[name="amount"]').value) || 0)),
+      amount: parseAmount(row.querySelector('[name="amount"]').value) ?? 0,
     }));
   }
 
@@ -3499,13 +3660,13 @@ function programSectionHtml(p, state) {
       <div class="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h3 id="w-${p.programId}" class="flex items-center gap-2 text-lg font-semibold text-ink-900">${programSwatch(p.programId)} ${esc(program.name)}
           <span class="text-sm font-normal text-ink-500">${fmtNumber(p.amount)} ${esc(program.currency)}</span></h3>
-        <a class="link text-sm" href="${buildHash('/search', {
+        <a class="link link-target text-sm" href="${buildHash('/search', {
           programs: p.programId,
           from: state.from.trim(),
           cabins: state.cabins.length === CABINS.length ? null : state.cabins.join(','),
           maxMiles: p.amount,
           sort: 'score',
-        })}">Open in Search →</a>
+        })}">Open in Search ${icon('arrowRight', { size: 14 })}</a>
       </div>
       <p class="mb-3 text-sm text-ink-600">${plural(p.affordableCount, 'award')} to ${plural(p.destinationCount, 'destination')} within your balance.</p>
       ${best ? `<ul class="mb-4 flex flex-wrap gap-x-6 gap-y-1 text-sm">${best}</ul>` : ''}
@@ -3537,6 +3698,8 @@ const { airportLabel } = __require("data/airports.js");
 const { programName } = __require("data/programs.js");
 const { evaluateSaved, markSeen, removeSaved, setTarget } = __require("data/alerts.js");
 const { announce, esc, mount, on } = __require("util/dom.js");
+const { routeArrow } = __require("components/icons.js");
+const { parseAmount } = __require("util/number.js");
 const { buildHash } = __require("util/router.js");
 const { CABIN_LABEL, fmtDate, fmtNumber, plural } = __require("util/format.js");
 
@@ -3563,8 +3726,8 @@ function entryHtml({ saved, current, diff, noteworthy }) {
   const chips = [];
   if (diff.opened.length) chips.push(`<span class="badge badge-good">${plural(diff.opened.length, 'new date')}</span>`);
   if (diff.drops.length) chips.push(`<span class="badge badge-good">${plural(diff.drops.length, 'price drop')}</span>`);
-  if (diff.newLow) chips.push(`<span class="badge badge-sweet">New low ${fmtNumber(diff.currLow)}</span>`);
-  if (diff.targetHits.length) chips.push(`<span class="badge badge-sweet">${plural(diff.targetHits.length, 'date')} under target</span>`);
+  if (diff.newLow) chips.push(`<span class="badge badge-good">New low ${fmtNumber(diff.currLow)}</span>`);
+  if (diff.targetHits.length) chips.push(`<span class="badge badge-good">${plural(diff.targetHits.length, 'date')} under target</span>`);
   if (diff.closed.length) chips.push(`<span class="badge badge-bad">${plural(diff.closed.length, 'date')} gone</span>`);
   if (!chips.length) chips.push('<span class="badge">No changes</span>');
 
@@ -3580,7 +3743,7 @@ function entryHtml({ saved, current, diff, noteworthy }) {
   }
   if (diff.targetHits.length) {
     details.push(
-      `<li><span class="font-semibold text-accent-800">At or under ${fmtNumber(saved.targetMiles)}:</span> ${diff.targetHits
+      `<li><span class="font-semibold text-good-800">At or under ${fmtNumber(saved.targetMiles)}:</span> ${diff.targetHits
         .slice(0, MAX_LISTED)
         .map((h) => `${esc(fmtDate(h.date))} (${fmtNumber(h.miles)})`)
         .join(', ')}</li>`,
@@ -3590,10 +3753,10 @@ function entryHtml({ saved, current, diff, noteworthy }) {
 
   const cabinParam = saved.cabin === 'any' ? null : saved.cabin;
   return `
-    <li class="card p-4 sm:p-5 ${noteworthy ? 'ring-2 ring-accent-400' : ''}" data-saved-id="${esc(saved.id)}">
+    <li class="card p-4 sm:p-5 ${noteworthy ? 'ring-2 ring-brand-500' : ''}" data-saved-id="${esc(saved.id)}">
       <div class="flex flex-wrap items-start justify-between gap-3">
         <div class="min-w-0">
-          <h2 class="font-mono text-lg font-semibold text-ink-900">${esc(saved.from)} → ${esc(saved.to)}</h2>
+          <h2 class="flex items-center gap-1.5 font-mono text-lg font-semibold text-ink-900">${esc(saved.from)} ${routeArrow(16)} ${esc(saved.to)}</h2>
           <p class="text-sm text-ink-600">${esc(airportLabel(saved.from))} to ${esc(airportLabel(saved.to))} · ${esc(cabinLabel)} · ${
             saved.programId ? esc(programName(saved.programId)) : 'All programs'
           }</p>
@@ -3606,11 +3769,11 @@ function entryHtml({ saved, current, diff, noteworthy }) {
       ${details.length ? `<ul class="mt-3 space-y-1 text-sm text-ink-700">${details.join('')}</ul>` : ''}
       <div class="mt-4 flex flex-wrap items-end gap-2 border-t border-ink-100 pt-4">
         <label class="text-xs text-ink-600">Alert me at or under
-          <input type="number" class="input mt-1 w-36 tabular" min="0" step="5000" data-target value="${saved.targetMiles ?? ''}" placeholder="Any price" />
+          <input type="text" inputmode="numeric" autocomplete="off" class="input mt-1 w-36 tabular" data-target value="${saved.targetMiles ?? ''}" placeholder="Any, e.g. 60k" />
         </label>
         <a class="btn btn-sm" href="${buildHash('/calendar', { from: saved.from, to: saved.to, cabin: cabinParam ?? 'business', program: saved.programId })}">Calendar</a>
         <a class="btn btn-sm" href="${buildHash('/search', { from: saved.from, to: saved.to, cabins: cabinParam, programs: saved.programId, sort: 'date' })}">Search</a>
-        ${noteworthy ? '<button type="button" class="btn btn-sm btn-primary" data-mark-seen>Mark as seen</button>' : ''}
+        ${noteworthy ? '<button type="button" class="btn btn-sm" data-mark-seen>Mark as seen</button>' : ''}
         <button type="button" class="btn btn-sm btn-ghost ml-auto" data-remove aria-label="Stop watching ${esc(saved.from)} to ${esc(saved.to)}">Remove</button>
       </div>
     </li>`;
@@ -3661,7 +3824,7 @@ function render(root) {
       root.querySelector('h1')?.focus();
     }),
     on(root, 'change', '[data-target]', (e, input) => {
-      setTarget(idOf(input), Math.round(Number(input.value)) || null);
+      setTarget(idOf(input), parseAmount(input.value));
       draw();
       changed();
       announce('Target updated');
@@ -3742,8 +3905,8 @@ function cardHtml(p, s) {
         }
         <p class="text-xs text-ink-500">Partners (simplified): ${p.partners.length} airlines</p>
         <div class="mt-auto flex flex-wrap gap-x-4 gap-y-1 border-t border-ink-100 pt-3 text-sm">
-          <a class="link" href="${buildHash('/search', { programs: p.id, sort: 'score' })}">Search awards</a>
-          <a class="link" href="${buildHash('/wallet', { b: `${p.id}:100000` })}">What can 100k book?</a>
+          <a class="link link-target" href="${buildHash('/search', { programs: p.id, sort: 'score' })}">Search awards</a>
+          <a class="link link-target" href="${buildHash('/wallet', { b: `${p.id}:100000` })}">What can 100k book?</a>
         </div>
       </div>
     </li>`;
@@ -3758,7 +3921,7 @@ function render(root, { query, router }) {
     `
     <div class="mb-6">
       <h1 tabindex="-1" class="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">Loyalty programs</h1>
-      <p class="mt-1 max-w-2xl text-ink-600">The ${PROGRAMS.length} programs Pointscanner scans, with what's bookable in each right now. The baseline is the
+      <p class="mt-1 max-w-2xl text-ink-600">The ${PROGRAMS.length} programs Pointscanner covers, with what's bookable in each in the current data. The baseline is the
         value per point a deal score of 1.0× represents.</p>
     </div>
     <div role="group" aria-label="Filter by alliance" class="mb-5 flex flex-wrap gap-2">
@@ -3906,11 +4069,10 @@ sweet spot: score ≥ ${SWEET_SPOT_THRESHOLD}×</code></pre>
       ${section(
         'about-privacy',
         'Privacy',
-        `<p>No account, no cookies, no analytics, no ads. There is no server: searches run entirely in your browser.</p>
-         <p>Saved routes, wallet balances and your theme are kept in this browser's <code class="font-mono text-sm">localStorage</code>
-          (keys starting <code class="font-mono text-sm">pointscanner:</code>). Clearing site data removes them.</p>
-         <p>The page loads Tailwind CSS from <code class="font-mono text-sm">cdn.tailwindcss.com</code> and fonts from Google Fonts. Those
-          services receive an ordinary request when the page loads, the same as any website using them.</p>`,
+        `<p>No account, no cookies, no analytics, no ads and no third-party requests: fonts and styles are served with the site, and
+          searches run entirely in your browser. Saved routes, wallet balances and your theme stay in this browser's
+          <code class="font-mono text-sm">localStorage</code>. Details, plus export and delete buttons, are on the
+          <a class="link" href="#/privacy">privacy page</a>.</p>`,
       )}
       ${section(
         'about-license',
@@ -3942,6 +4104,250 @@ sweet spot: score ≥ ${SWEET_SPOT_THRESHOLD}×</code></pre>
 }
 });
 
+// ── assets/js/pages/privacy.js ────────────────────────────────────────────
+__define("pages/privacy.js", function (__exports, __require) {
+__export(__exports, { "PRIVACY_VERSION": () => PRIVACY_VERSION, "STORAGE_INVENTORY": () => STORAGE_INVENTORY, "DRAFT_NOTICE": () => DRAFT_NOTICE, "render": () => render });
+const { SAVED_KEY } = __require("data/alerts.js");
+const { WALLET_KEY } = __require("data/wallet.js");
+const { REPO_URL } = __require("components/header.js");
+const { announce, esc, mount, on } = __require("util/dom.js");
+const { STORAGE_PREFIX, clearOwnData, exportOwnData, ownKeys } = __require("util/storage.js");
+const { THEME_KEY, applyTheme } = __require("util/theme.js");
+
+const PRIVACY_VERSION = '0.1 (draft), 12 November 2026';
+
+// Every key the app writes. Keep in sync with util/theme.js, data/alerts.js
+// and data/wallet.js (test/legal.test.js checks this).
+const STORAGE_INVENTORY = [
+  { key: THEME_KEY, purpose: 'Remembers the colour theme you picked (system, light or dark).', category: 'Preferences', duration: 'Until you change it or clear site data' },
+  { key: SAVED_KEY, purpose: 'Routes you saved and the snapshot used to show what changed since your last visit.', category: 'Functional (feature you turned on)', duration: 'Until you remove the route or clear site data' },
+  { key: WALLET_KEY, purpose: 'Point balances you typed on the Wallet page.', category: 'Functional (feature you turned on)', duration: 'Until you remove them or clear site data' },
+];
+
+const DRAFT_NOTICE = `<p class="rounded-lg bg-bad-100 px-3 py-2 text-sm font-semibold text-bad-800" role="note">DRAFT: requires review by a qualified lawyer before publishing.</p>`;
+
+const section = (id, title, body) => `
+  <section aria-labelledby="${id}" class="space-y-3">
+    <h2 id="${id}" class="text-lg font-semibold text-ink-900">${title}</h2>
+    <div class="space-y-3 text-ink-700">${body}</div>
+  </section>`;
+
+function storedSummary() {
+  const keys = ownKeys();
+  return keys.length
+    ? `This browser currently holds ${keys.length} Pointscanner item${keys.length === 1 ? '' : 's'}: ${keys.map((k) => `<code class="font-mono text-sm">${esc(k)}</code>`).join(', ')}.`
+    : 'This browser currently holds no Pointscanner data.';
+}
+
+function render(root) {
+  mount(
+    root,
+    `
+    <article class="max-w-3xl space-y-8">
+      <header class="space-y-3">
+        <h1 tabindex="-1" class="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">Privacy</h1>
+        ${DRAFT_NOTICE}
+        <p class="text-sm text-ink-600">Version ${esc(PRIVACY_VERSION)}</p>
+        <p class="text-ink-700">Short version: Pointscanner has no server, no accounts, no cookies, no analytics and no ads. It doesn't
+          collect personal data. A few settings you choose are kept in your own browser, and you can delete them on this page.</p>
+      </header>
+
+      ${section(
+        'who',
+        'Who runs Pointscanner',
+        `<p>[[TODO: name of the person or legal entity operating the site]]<br />
+         Contact: [[TODO: contact email]]<br />
+         Postal address (if required in your jurisdiction): [[TODO: postal address]]</p>`,
+      )}
+
+      ${section(
+        'collect',
+        'What we collect',
+        `<p>Nothing. Searches, filters, saved routes and wallet balances are processed entirely in your browser. None of it is sent to us
+          or to anyone else.</p>
+         <p>The site's files (HTML, scripts, styles, fonts and any award data file) are all served from the same website. There are no
+          third-party scripts, fonts or trackers. If you load an award file on the About page, it is read in memory in that tab and is
+          never uploaded.</p>`,
+      )}
+
+      ${section(
+        'hosting',
+        'Hosting',
+        `<p>Like any website, the host that serves these files receives standard request information such as your IP address and browser
+          type, under the host's own privacy terms. Host: [[TODO: hosting provider, e.g. GitHub Pages, and a link to its privacy statement]].</p>
+         <p>The "Source on GitHub" link takes you to GitHub, which has its own privacy statement.</p>`,
+      )}
+
+      ${section(
+        'storage',
+        'What is stored in your browser',
+        `<p>No cookies are used. Pointscanner writes these <code class="font-mono text-sm">localStorage</code> items, only when you use the
+          matching feature:</p>
+         <div class="card relative overflow-x-auto">
+           <table class="data-table">
+             <caption class="sr-only">Browser storage used by Pointscanner</caption>
+             <thead><tr><th scope="col">Key</th><th scope="col">Purpose</th><th scope="col">Category</th><th scope="col">Kept</th></tr></thead>
+             <tbody>
+               ${STORAGE_INVENTORY.map(
+                 (s) => `<tr><td class="whitespace-nowrap font-mono text-sm">${esc(s.key)}</td><td>${esc(s.purpose)}</td><td>${esc(s.category)}</td><td>${esc(s.duration)}</td></tr>`,
+               ).join('')}
+             </tbody>
+           </table>
+         </div>
+         <p>These items are needed for features you ask for and never leave your device, so there is no consent banner. Nothing is
+          stored for analytics or advertising.</p>`,
+      )}
+
+      ${section(
+        'your-data',
+        'See, export or delete your data',
+        `<p id="stored-summary">${storedSummary()}</p>
+         <div class="flex flex-wrap gap-2">
+           <button type="button" class="btn" data-export>Download my data (JSON)</button>
+           <button type="button" class="btn" data-clear>Delete my Pointscanner data</button>
+         </div>
+         <div id="clear-confirm" class="hidden rounded-lg bg-ink-100 p-4" role="group" aria-labelledby="clear-confirm-text">
+           <p id="clear-confirm-text" class="text-ink-800">This deletes your saved routes, wallet balances and theme choice from this browser.
+             It can't be undone.</p>
+           <div class="mt-3 flex flex-wrap gap-2">
+             <button type="button" class="btn btn-primary" data-clear-confirm>Delete data</button>
+             <button type="button" class="btn btn-ghost" data-clear-cancel>Keep my data</button>
+           </div>
+         </div>
+         <p id="clear-status" class="text-sm text-ink-700" role="status"></p>
+         <p>You can also clear it any time through your browser's site-data settings. Because nothing reaches us, we hold no copy to access,
+          correct or delete.</p>`,
+      )}
+
+      ${section(
+        'children',
+        'Children',
+        `<p>Pointscanner is a travel-planning tool for adults and is not directed at children. It collects no personal data from anyone.</p>`,
+      )}
+
+      ${section(
+        'changes',
+        'Changes and questions',
+        `<p>If this page changes, the version and date at the top change too, and the history is public in the
+          <a class="link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer">source repository</a>.
+          Questions: [[TODO: contact email]].</p>`,
+      )}
+    </article>`,
+  );
+
+  const confirmBox = root.querySelector('#clear-confirm');
+  const status = root.querySelector('#clear-status');
+  const offs = [
+    on(root, 'click', '[data-export]', () => {
+      const blob = new Blob([JSON.stringify(exportOwnData(), null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = Object.assign(document.createElement('a'), { href: url, download: 'pointscanner-data.json' });
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      status.textContent = 'Downloaded pointscanner-data.json.';
+    }),
+    on(root, 'click', '[data-clear]', () => {
+      confirmBox.classList.remove('hidden');
+      root.querySelector('[data-clear-cancel]').focus();
+    }),
+    on(root, 'click', '[data-clear-cancel]', () => {
+      confirmBox.classList.add('hidden');
+      root.querySelector('[data-clear]').focus();
+    }),
+    on(root, 'click', '[data-clear-confirm]', () => {
+      const n = clearOwnData(STORAGE_PREFIX);
+      applyTheme('system');
+      document.dispatchEvent(new CustomEvent('pointscanner:saved-changed'));
+      document.dispatchEvent(new CustomEvent('pointscanner:theme-changed'));
+      confirmBox.classList.add('hidden');
+      root.querySelector('#stored-summary').innerHTML = storedSummary();
+      status.textContent = n ? `Deleted ${n} item${n === 1 ? '' : 's'} from this browser.` : 'There was nothing to delete.';
+      announce(status.textContent);
+      root.querySelector('[data-clear]').focus();
+    }),
+  ];
+  return () => offs.forEach((off) => off());
+}
+});
+
+// ── assets/js/pages/terms.js ──────────────────────────────────────────────
+__define("pages/terms.js", function (__exports, __require) {
+__export(__exports, { "TERMS_VERSION": () => TERMS_VERSION, "render": () => render });
+const { REPO_URL } = __require("components/header.js");
+const { DRAFT_NOTICE } = __require("pages/privacy.js");
+const { esc, mount } = __require("util/dom.js");
+
+const TERMS_VERSION = '0.1 (draft), 12 November 2026';
+
+const section = (id, title, body) => `
+  <section aria-labelledby="${id}" class="space-y-3">
+    <h2 id="${id}" class="text-lg font-semibold text-ink-900">${title}</h2>
+    <div class="space-y-3 text-ink-700">${body}</div>
+  </section>`;
+
+function render(root) {
+  mount(
+    root,
+    `
+    <article class="max-w-3xl space-y-8">
+      <header class="space-y-3">
+        <h1 tabindex="-1" class="text-2xl font-bold tracking-tight text-ink-900 sm:text-3xl">Terms of use</h1>
+        ${DRAFT_NOTICE}
+        <p class="text-sm text-ink-600">Version ${esc(TERMS_VERSION)}</p>
+      </header>
+
+      ${section(
+        'service',
+        'What Pointscanner is',
+        `<p>A free tool for exploring airline award availability and comparing redemptions. It is provided by
+          [[TODO: name of the person or legal entity operating the site]]. There are no accounts, payments or subscriptions.</p>`,
+      )}
+
+      ${section(
+        'data',
+        'Award data is for information only',
+        `<p>Unless the footer says otherwise, the award data shown is <strong>generated sample data, not real availability</strong>.
+          Even real data can be out of date the moment it's shown. Prices, taxes, seat counts and deal scores are estimates.</p>
+         <p>Always confirm availability and price with the loyalty program before transferring points or booking. Point transfers are
+          usually irreversible. Pointscanner can't book anything and isn't responsible for decisions made using it.</p>`,
+      )}
+
+      ${section(
+        'affiliation',
+        'No affiliation; trademarks',
+        `<p>Pointscanner is independent and is not affiliated with, endorsed by or sponsored by any airline, alliance or loyalty program.
+          Airline, alliance and program names are trademarks of their respective owners and are used only to identify them. Colours
+          shown next to program names are for telling programs apart, not official branding.</p>`,
+      )}
+
+      ${section(
+        'warranty',
+        'No warranty',
+        `<p>The service and its source code are provided "as is", without warranty of any kind, to the extent permitted by law.
+          [[TODO: limitation-of-liability wording appropriate to the operator's jurisdiction]]</p>`,
+      )}
+
+      ${section(
+        'license',
+        'Source code',
+        `<p>The source code is available under the MIT License in the
+          <a class="link" href="${REPO_URL}" target="_blank" rel="noopener noreferrer">public repository</a>. Third-party fonts and
+          tools are listed in CREDITS.md there.</p>`,
+      )}
+
+      ${section(
+        'law',
+        'Governing law and changes',
+        `<p>Governing law and jurisdiction: [[TODO: governing law and jurisdiction]].</p>
+         <p>If these terms change, the version and date above change too. Questions: [[TODO: contact email]].</p>`,
+      )}
+    </article>`,
+  );
+}
+});
+
 // ── assets/js/main.js ─────────────────────────────────────────────────────
 __define("main.js", function (__exports, __require) {
 const { Router } = __require("util/router.js");
@@ -3959,6 +4365,8 @@ const wallet = __require("pages/wallet.js");
 const saved = __require("pages/saved.js");
 const programs = __require("pages/programs.js");
 const about = __require("pages/about.js");
+const privacy = __require("pages/privacy.js");
+const terms = __require("pages/terms.js");
 
 const ROUTES = {
   '/': home,
@@ -3969,6 +4377,8 @@ const ROUTES = {
   '/saved': saved,
   '/programs': programs,
   '/about': about,
+  '/privacy': privacy,
+  '/terms': terms,
 };
 
 const TITLES = {
@@ -3979,6 +4389,8 @@ const TITLES = {
   '/saved': 'Saved routes',
   '/programs': 'Programs',
   '/about': 'About',
+  '/privacy': 'Privacy',
+  '/terms': 'Terms of use',
 };
 
 const notFound = {
@@ -4045,7 +4457,8 @@ boot().catch((err) => {
   const main = document.getElementById('main');
   if (main) {
     main.innerHTML = `<div class="card mx-auto max-w-lg p-8 text-center"><h1 class="text-xl font-bold">Something went wrong</h1>
-      <p class="mt-2">Pointscanner couldn't start. Try reloading the page.</p></div>`;
+      <p class="mt-2">Pointscanner couldn't start. This is usually temporary.</p>
+      <button type="button" class="btn btn-primary mt-4" onclick="location.reload()">Reload the page</button></div>`;
   }
 });
 });

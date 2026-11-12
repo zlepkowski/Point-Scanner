@@ -13,6 +13,8 @@ import * as wallet from './pages/wallet.js';
 import * as saved from './pages/saved.js';
 import * as programs from './pages/programs.js';
 import * as about from './pages/about.js';
+import * as privacy from './pages/privacy.js';
+import * as terms from './pages/terms.js';
 
 const ROUTES = {
   '/': home,
@@ -23,6 +25,8 @@ const ROUTES = {
   '/saved': saved,
   '/programs': programs,
   '/about': about,
+  '/privacy': privacy,
+  '/terms': terms,
 };
 
 const TITLES = {
@@ -33,6 +37,8 @@ const TITLES = {
   '/saved': 'Saved routes',
   '/programs': 'Programs',
   '/about': 'About',
+  '/privacy': 'Privacy',
+  '/terms': 'Terms of use',
 };
 
 const notFound = {
@@ -99,6 +105,7 @@ boot().catch((err) => {
   const main = document.getElementById('main');
   if (main) {
     main.innerHTML = `<div class="card mx-auto max-w-lg p-8 text-center"><h1 class="text-xl font-bold">Something went wrong</h1>
-      <p class="mt-2">Pointscanner couldn't start. Try reloading the page.</p></div>`;
+      <p class="mt-2">Pointscanner couldn't start. This is usually temporary.</p>
+      <button type="button" class="btn btn-primary mt-4" onclick="location.reload()">Reload the page</button></div>`;
   }
 });

@@ -83,3 +83,19 @@ test('fmtMilesShort', () => {
   assert.equal(fmtMilesShort(57500), '57.5k');
   assert.equal(fmtMilesShort(950), '950');
 });
+
+test('parseAmount accepts the ways people type numbers', async () => {
+  const { parseAmount } = await import('../assets/js/util/number.js');
+  assert.equal(parseAmount('90000'), 90000);
+  assert.equal(parseAmount('90,000'), 90000);
+  assert.equal(parseAmount(' 90 000 '), 90000);
+  assert.equal(parseAmount('90k'), 90000);
+  assert.equal(parseAmount('57.5K'), 57500);
+  assert.equal(parseAmount('1.2m'), 1200000);
+  assert.equal(parseAmount('$250'), 250);
+  assert.equal(parseAmount('75k points'), 75000);
+  assert.equal(parseAmount(''), null);
+  assert.equal(parseAmount('lots'), null);
+  assert.equal(parseAmount('-5'), null);
+  assert.equal(parseAmount(null), null);
+});

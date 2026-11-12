@@ -5,6 +5,7 @@ import { esc } from '../util/dom.js';
 import { buildHash } from '../util/router.js';
 import { CABIN_LABEL, fmtDate, fmtDuration, fmtNumber, fmtStops, fmtUsd, plural } from '../util/format.js';
 import { programTag, scoreBadge } from './badges.js';
+import { routeArrow } from './icons.js';
 
 const city = (iata) => airportByIata.get(iata)?.city ?? iata;
 
@@ -15,7 +16,7 @@ export function awardCardHtml(a, { heading = 'route', note = '' } = {}) {
   const title =
     heading === 'destination'
       ? `<h3 class="text-base font-semibold text-ink-900">${esc(city(a.to))} <span class="font-mono text-sm font-medium text-ink-500">${esc(a.to)}</span></h3>`
-      : `<h3 class="font-mono text-lg font-semibold tracking-tight text-ink-900">${esc(a.from)} <span aria-hidden="true" class="text-ink-400">→</span><span class="sr-only"> to </span> ${esc(a.to)}</h3>
+      : `<h3 class="flex items-center gap-1.5 font-mono text-lg font-semibold tracking-tight text-ink-900">${esc(a.from)} ${routeArrow(16)} ${esc(a.to)}</h3>
          <p class="text-sm text-ink-600">${esc(city(a.from))} to ${esc(city(a.to))}</p>`;
   const meta = [fmtStops(a.stops), a.durationHours ? fmtDuration(a.durationHours) : null, plural(a.seats, 'seat')].filter(Boolean).join(' · ');
 
@@ -39,8 +40,8 @@ export function awardCardHtml(a, { heading = 'route', note = '' } = {}) {
       </dl>
       <p class="text-xs text-ink-500">${esc(meta)}${note ? ` · ${esc(note)}` : ''}</p>
       <div class="mt-auto flex flex-wrap gap-x-4 gap-y-1 border-t border-ink-100 pt-3 text-sm">
-        <a class="link" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}">Calendar</a>
-        <a class="link" href="${buildHash('/search', { from: a.from, to: a.to, cabins: a.cabin })}">All dates</a>
+        <a class="link link-target" href="${buildHash('/calendar', { from: a.from, to: a.to, cabin: a.cabin })}">Calendar</a>
+        <a class="link link-target" href="${buildHash('/search', { from: a.from, to: a.to, cabins: a.cabin })}">All dates</a>
       </div>
     </article>`;
 }

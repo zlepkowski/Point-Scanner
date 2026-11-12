@@ -3,6 +3,8 @@ import { CABINS } from '../util/format.js';
 import { isIsoDate } from '../util/date.js';
 import { esc } from '../util/dom.js';
 import { programSwatch } from './badges.js';
+import { icon } from './icons.js';
+import { parseAmount } from '../util/number.js';
 import { cabinChipsHtml, readChips } from './cabinChips.js';
 
 export const DEFAULT_FILTERS = Object.freeze({
@@ -18,11 +20,7 @@ export const DEFAULT_FILTERS = Object.freeze({
 });
 
 const splitList = (s) => (s ? String(s).split(',').map((x) => x.trim()).filter(Boolean) : []);
-const positive = (s) => {
-  if (s === undefined || s === null || s === '') return null;
-  const n = Number(s);
-  return Number.isFinite(n) && n > 0 ? n : null;
-};
+const positive = parseAmount;
 
 export function filtersFromQuery(q = {}) {
   const cabins = splitList(q.cabins).filter((c) => CABINS.includes(c));
@@ -101,15 +99,14 @@ function programGroupHtml(alliance, f) {
       <div class="mb-1 flex items-center justify-between">
         <legend id="${gid}" class="text-xs font-semibold uppercase tracking-wide text-ink-500">${esc(label)}</legend>
         <span class="flex gap-1 text-xs">
-          <button type="button" class="link" data-programs-all="${esc(alliance)}" aria-label="Select all ${esc(label)} programs">All</button>
-          <span aria-hidden="true" class="text-ink-400">/</span>
-          <button type="button" class="link" data-programs-none="${esc(alliance)}" aria-label="Clear ${esc(label)} programs">None</button>
+          <button type="button" class="link link-target px-1" data-programs-all="${esc(alliance)}" aria-label="Select all ${esc(label)} programs">All</button>
+          <button type="button" class="link link-target px-1" data-programs-none="${esc(alliance)}" aria-label="Clear ${esc(label)} programs">None</button>
         </span>
       </div>
       ${programs
         .map(
           (p) => `
-        <label class="flex items-center gap-2 py-0.5 text-sm text-ink-800">
+        <label class="flex min-h-[28px] items-center gap-2 text-sm text-ink-800">
           <input type="checkbox" class="checkbox" name="program" value="${p.id}" ${!f.programs || f.programs.includes(p.id) ? 'checked' : ''} />
           ${programSwatch(p.id)} <span class="truncate">${esc(p.name)}</span>
         </label>`,
@@ -141,10 +138,10 @@ export function filtersPanelHtml(f, { window }) {
       <fieldset class="space-y-2">
         <legend class="field-label">Price &amp; seats</legend>
         <label class="block text-xs text-ink-600">Max miles / points
-          <input type="number" inputmode="numeric" name="maxMiles" class="input mt-1 tabular" min="0" step="5000" placeholder="Any" value="${f.maxMiles ?? ''}" />
+          <input type="text" inputmode="numeric" autocomplete="off" data-amount name="maxMiles" class="input mt-1 tabular" placeholder="Any, e.g. 80k" value="${f.maxMiles ?? ''}" />
         </label>
         <label class="block text-xs text-ink-600">Max taxes &amp; fees (USD)
-          <input type="number" inputmode="numeric" name="maxTaxes" class="input mt-1 tabular" min="0" step="25" placeholder="Any" value="${f.maxTaxes ?? ''}" />
+          <input type="text" inputmode="numeric" autocomplete="off" data-amount name="maxTaxes" class="input mt-1 tabular" placeholder="Any, e.g. 200" value="${f.maxTaxes ?? ''}" />
         </label>
         <label class="block text-xs text-ink-600">Seats needed
           <select name="minSeats" class="input mt-1">
@@ -159,14 +156,15 @@ export function filtersPanelHtml(f, { window }) {
         </label>
         <label class="flex items-center gap-2 text-sm text-ink-800">
           <input type="checkbox" class="checkbox" name="sweetOnly" ${f.sweetOnly ? 'checked' : ''} />
-          <span>Sweet spots only <span class="badge badge-sweet ml-1" aria-hidden="true">★</span></span>
+          <span>Sweet spots only <span class="badge badge-sweet ml-1" aria-hidden="true">${icon('star', { size: 12, filled: true })}</span></span>
         </label>
       </div>
 
-      <div>
-        <span class="field-label">Programs</span>
-        ${ALLIANCES.map((a) => programGroupHtml(a, f)).join('')}
-      </div>
+      <details ${f.programs ? 'open' : ''}>
+        <summary class="cursor-pointer py-1 text-[13px] font-semibold text-ink-700">Programs
+          <span class="font-normal text-ink-600">(${f.programs ? `${f.programs.length} of ${PROGRAMS.length}` : `all ${PROGRAMS.length}`})</span></summary>
+        <div class="mt-2">${ALLIANCES.map((a) => programGroupHtml(a, f)).join('')}</div>
+      </details>
 
       <button type="button" class="btn w-full" data-reset-filters>Reset filters</button>
     </form>`;

@@ -4,6 +4,7 @@ import { airportInputHtml } from '../components/airportSelect.js';
 import { awardCardHtml, cardGridHtml } from '../components/awardCard.js';
 import { bindChips, cabinChipsHtml } from '../components/cabinChips.js';
 import { announce, esc, mount } from '../util/dom.js';
+import { icon } from '../components/icons.js';
 import { buildHash } from '../util/router.js';
 import { CABINS, CABIN_LABEL, plural } from '../util/format.js';
 
@@ -88,7 +89,7 @@ export function render(root, { query, router }) {
                 <span class="ml-1 text-sm font-normal text-ink-500">${plural(g.rows.length, 'destination')}</span></h2>
               ${
                 g.rows.length > PER_REGION
-                  ? `<a class="link text-sm" href="${buildHash('/search', { from: state.from, to: g.region, cabins: state.cabin, sort: state.sort === 'score' ? null : 'miles' })}">View all ${g.rows.length} in Search →</a>`
+                  ? `<a class="link link-target text-sm" href="${buildHash('/search', { from: state.from, to: g.region, cabins: state.cabin, sort: state.sort === 'score' ? null : 'miles' })}">View all ${g.rows.length} in Search ${icon('arrowRight', { size: 14 })}</a>`
                   : ''
               }
             </div>

@@ -1,10 +1,11 @@
 import { programById } from '../data/programs.js';
 import { CABIN_SHORT, fmtScore } from '../util/format.js';
 import { esc } from '../util/dom.js';
+import { icon } from './icons.js';
 
 export function programSwatch(programId) {
   const color = programById.get(programId)?.color ?? '#94a3b8';
-  return `<span class="inline-block h-2.5 w-2.5 shrink-0 rounded-full" style="background:${esc(color)}" aria-hidden="true"></span>`;
+  return `<span class="swatch" style="background:${esc(color)}" aria-hidden="true"></span>`;
 }
 
 export function programTag(programId) {
@@ -22,7 +23,7 @@ export function cabinBadge(cabin) {
 export function scoreBadge(score, sweet) {
   const title = `Deal score ${score.toFixed(2)}× the program's baseline value per point`;
   return sweet
-    ? `<span class="badge badge-sweet" title="${esc(title)}"><span aria-hidden="true">★</span> ${fmtScore(score)}<span class="sr-only"> deal score, sweet spot</span></span>`
+    ? `<span class="badge badge-sweet" title="${esc(title)}">${icon('star', { size: 12, filled: true })} ${fmtScore(score)}<span class="sr-only"> deal score, sweet spot</span></span>`
     : `<span class="badge tabular" title="${esc(title)}">${fmtScore(score)}<span class="sr-only"> deal score</span></span>`;
 }
 

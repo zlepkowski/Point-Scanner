@@ -18,8 +18,8 @@ export function airportInputHtml({ id, name, label, value = '', placeholder = 'C
   return `
     <div>
       <label class="field-label" for="${id}">${esc(label)}</label>
-      <input id="${id}" name="${name}" class="input font-mono uppercase placeholder:normal-case placeholder:font-sans" list="${DATALIST_ID}"
-        value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off" autocapitalize="characters" spellcheck="false"
+      <input id="${id}" name="${name}" class="input" list="${DATALIST_ID}"
+        value="${esc(value)}" placeholder="${esc(placeholder)}" autocomplete="off" spellcheck="false"
         ${hintId ? `aria-describedby="${hintId}"` : ''} />
       ${hint ? `<p id="${hintId}" class="mt-1 text-xs text-ink-500">${esc(hint)}</p>` : ''}
     </div>`;
