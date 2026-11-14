@@ -73,3 +73,13 @@ export function plural(n, one, many = one + 's') {
 export function fmtStops(stops) {
   return stops === 0 ? 'Nonstop' : stops === 1 ? '1 stop' : `${stops} stops`;
 }
+
+const dateTimeFmt = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+export function fmtDateTime(iso) {
+  return dateTimeFmt.format(new Date(iso));
+}
+
+export function hoursSince(iso, now = Date.now()) {
+  return (now - Date.parse(iso)) / 3600000;
+}

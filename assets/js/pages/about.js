@@ -6,7 +6,8 @@ import { CARRIER_PREMIUM, CASH_FLOOR, CASH_PER_KM, SWEET_SPOT_THRESHOLD } from '
 import { MAX_CONNECT_MINUTES, MAX_DETOUR_RATIO, MIN_CONNECT_MINUTES } from '../data/connections.js';
 import { REPO_URL } from '../components/header.js';
 import { announce, esc, mount } from '../util/dom.js';
-import { CABINS, CABIN_SHORT, fmtNumber } from '../util/format.js';
+import { CABINS, CABIN_SHORT, fmtDateTime, fmtNumber, plural } from '../util/format.js';
+import { programName } from '../data/programs.js';
 
 const EXAMPLE_RECORD = `{
   "from": "JFK",
@@ -25,12 +26,30 @@ const EXAMPLE_RECORD = `{
   "seats": 2
 }`;
 
+const SOURCE_LABEL = {
+  ok: 'collected',
+  blocked: 'blocked automated access, skipped',
+  disallowed: "robots.txt doesn't allow it, skipped",
+  failing: 'errors, skipped',
+};
+
 function sourceStatusHtml() {
   const s = getSource();
   if (!s) return '';
   return `
     <div class="rounded-lg bg-ink-100 p-3 text-sm">
-      <p><span class="font-semibold text-ink-900">Current data:</span> ${esc(s.label)} · ${fmtNumber(s.count)} awards</p>
+      <p><span class="font-semibold text-ink-900">Current data:</span> ${esc(s.label)} · ${plural(s.count, 'award')}${
+        s.generatedAt ? ` · collected ${esc(fmtDateTime(s.generatedAt))}` : ''
+      }</p>
+      ${
+        s.sources?.length
+          ? `<ul class="mt-2 space-y-0.5 text-ink-700">${s.sources
+              .map((p) => `<li><span class="font-semibold">${esc(programName(p.programId))}:</span> ${esc(SOURCE_LABEL[p.status])}${
+                p.status === 'ok' ? `, ${plural(p.awards, 'award')}` : ''
+              }${p.detail && p.status !== 'ok' ? ` (${esc(p.detail)})` : ''}</li>`)
+              .join('')}</ul>`
+          : ''
+      }
       ${s.warnings?.length ? `<ul class="mt-2 list-disc space-y-0.5 pl-5 text-ink-700">${s.warnings.map((w) => `<li>${esc(w.trim())}</li>`).join('')}</ul>` : ''}
     </div>`;
 }

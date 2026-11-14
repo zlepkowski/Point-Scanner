@@ -988,7 +988,7 @@ function generateAwards({ today = todayIso(), days = WINDOW_DAYS } = {}) {
 
 // ── assets/js/util/format.js ──────────────────────────────────────────────
 __define("util/format.js", function (__exports, __require) {
-__export(__exports, { "CABINS": () => CABINS, "CABIN_LABEL": () => CABIN_LABEL, "CABIN_SHORT": () => CABIN_SHORT, "CABIN_RANK": () => CABIN_RANK, "fmtNumber": () => fmtNumber, "fmtMilesShort": () => fmtMilesShort, "fmtUsd": () => fmtUsd, "fmtDate": () => fmtDate, "fmtDateLong": () => fmtDateLong, "fmtMonth": () => fmtMonth, "fmtDuration": () => fmtDuration, "fmtScore": () => fmtScore, "fmtCpm": () => fmtCpm, "plural": () => plural, "fmtStops": () => fmtStops });
+__export(__exports, { "CABINS": () => CABINS, "CABIN_LABEL": () => CABIN_LABEL, "CABIN_SHORT": () => CABIN_SHORT, "CABIN_RANK": () => CABIN_RANK, "fmtNumber": () => fmtNumber, "fmtMilesShort": () => fmtMilesShort, "fmtUsd": () => fmtUsd, "fmtDate": () => fmtDate, "fmtDateLong": () => fmtDateLong, "fmtMonth": () => fmtMonth, "fmtDuration": () => fmtDuration, "fmtScore": () => fmtScore, "fmtCpm": () => fmtCpm, "plural": () => plural, "fmtStops": () => fmtStops, "fmtDateTime": () => fmtDateTime, "hoursSince": () => hoursSince });
 const CABINS = ['economy', 'premium', 'business', 'first'];
 
 const CABIN_LABEL = {
@@ -1064,11 +1064,21 @@ function plural(n, one, many = one + 's') {
 function fmtStops(stops) {
   return stops === 0 ? 'Nonstop' : stops === 1 ? '1 stop' : `${stops} stops`;
 }
+
+const dateTimeFmt = new Intl.DateTimeFormat(LOCALE, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+
+function fmtDateTime(iso) {
+  return dateTimeFmt.format(new Date(iso));
+}
+
+function hoursSince(iso, now = Date.now()) {
+  return (now - Date.parse(iso)) / 3600000;
+}
 });
 
 // ── assets/js/data/validate.js ────────────────────────────────────────────
 __define("data/validate.js", function (__exports, __require) {
-__export(__exports, { "normalizeAwards": () => normalizeAwards });
+__export(__exports, { "normalizeAwards": () => normalizeAwards, "readProvenance": () => readProvenance });
 const { programById } = __require("data/programs.js");
 const { isIsoDate, parseHm } = __require("util/date.js");
 const { CABINS } = __require("util/format.js");
@@ -1139,6 +1149,29 @@ function normalizeAwards(input, { today } = {}) {
   if (stale) warnings.push(`Skipped ${stale} record(s) dated before ${today}.`);
   return { awards, warnings };
 }
+
+const SOURCE_STATUSES = new Set(['ok', 'blocked', 'disallowed', 'failing']);
+
+// Collector output (and any well-formed award file) may say when it was
+// collected and how each program fared. Anything malformed is ignored rather
+// than shown, so a bad file can't put misleading freshness on screen.
+function readProvenance(input) {
+  if (!input || Array.isArray(input) || typeof input !== 'object') return {};
+  const out = {};
+  const t = Date.parse(input.generatedAt);
+  if (typeof input.generatedAt === 'string' && Number.isFinite(t)) out.generatedAt = new Date(t).toISOString();
+  if (Array.isArray(input.sources)) {
+    out.sources = input.sources
+      .filter((s) => s && programById.has(s.programId) && SOURCE_STATUSES.has(s.status))
+      .map((s) => ({
+        programId: s.programId,
+        status: s.status,
+        awards: Number.isInteger(s.awards) && s.awards >= 0 ? s.awards : 0,
+        detail: typeof s.detail === 'string' ? s.detail.slice(0, 200) : null,
+      }));
+  }
+  return out;
+}
 });
 
 // ── assets/js/util/cpm.js ─────────────────────────────────────────────────
@@ -1198,7 +1231,7 @@ function isSweetSpot(score) {
 __define("data/store.js", function (__exports, __require) {
 __export(__exports, { "routeKey": () => routeKey, "enrich": () => enrich, "buildIndexes": () => buildIndexes, "setAwards": () => setAwards, "loadAwards": () => loadAwards, "loadAwardsFromJson": () => loadAwardsFromJson, "resetToSynthetic": () => resetToSynthetic, "getAwards": () => getAwards, "getIndexes": () => getIndexes, "getSource": () => getSource, "getToday": () => getToday, "getWindow": () => getWindow, "awardsFrom": () => awardsFrom, "awardsOnRoute": () => awardsOnRoute, "awardsForProgram": () => awardsForProgram, "onDataChange": () => onDataChange });
 const { generateAwards, WINDOW_DAYS } = __require("data/awards.js");
-const { normalizeAwards } = __require("data/validate.js");
+const { normalizeAwards, readProvenance } = __require("data/validate.js");
 const { centsPerMile, dealScore, isSweetSpot } = __require("util/cpm.js");
 const { todayIso, addDays } = __require("util/date.js");
 
@@ -1264,7 +1297,7 @@ async function loadAwards({ url, globalData, today = todayIso(), fetchImpl = glo
     const result = normalizeAwards(globalData, { today });
     warnings.push(...result.warnings);
     if (result.awards.length) {
-      return setAwards(result.awards, { kind: 'json', label: 'Embedded award data', warnings }, today);
+      return setAwards(result.awards, { kind: 'json', label: 'Embedded award data', warnings, ...readProvenance(globalData) }, today);
     }
     warnings.push('Embedded award data had no usable records; using synthetic data instead.');
   }
@@ -1273,10 +1306,11 @@ async function loadAwards({ url, globalData, today = todayIso(), fetchImpl = glo
     try {
       const res = await fetchImpl(url, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const result = normalizeAwards(await res.json(), { today });
+      const json = await res.json();
+      const result = normalizeAwards(json, { today });
       warnings.push(...result.warnings);
       if (result.awards.length) {
-        return setAwards(result.awards, { kind: 'json', label: url, warnings }, today);
+        return setAwards(result.awards, { kind: 'json', label: url, warnings, ...readProvenance(json) }, today);
       }
       warnings.push(`${url} had no usable records; using synthetic data instead.`);
     } catch (err) {
@@ -1290,7 +1324,7 @@ async function loadAwards({ url, globalData, today = todayIso(), fetchImpl = glo
 function loadAwardsFromJson(json, label) {
   const result = normalizeAwards(json, { today: state.today });
   if (!result.awards.length) return { ok: false, warnings: result.warnings };
-  setAwards(result.awards, { kind: 'json', label, warnings: result.warnings });
+  setAwards(result.awards, { kind: 'json', label, warnings: result.warnings, ...readProvenance(json) });
   return { ok: true, warnings: result.warnings };
 }
 
@@ -1487,9 +1521,10 @@ function routeArrow(size = 14) {
 
 // ── assets/js/components/header.js ────────────────────────────────────────
 __define("components/header.js", function (__exports, __require) {
-__export(__exports, { "REPO_URL": () => REPO_URL, "NAV": () => NAV, "renderHeader": () => renderHeader, "setActiveNav": () => setActiveNav, "setSavedBadge": () => setSavedBadge, "renderFooter": () => renderFooter });
+__export(__exports, { "REPO_URL": () => REPO_URL, "NAV": () => NAV, "renderHeader": () => renderHeader, "setActiveNav": () => setActiveNav, "setSavedBadge": () => setSavedBadge, "STALE_AFTER_HOURS": () => STALE_AFTER_HOURS, "provenanceLines": () => provenanceLines, "renderFooter": () => renderFooter });
 const { esc } = __require("util/dom.js");
-const { fmtDateLong, plural } = __require("util/format.js");
+const { fmtDateLong, fmtDateTime, hoursSince, plural } = __require("util/format.js");
+const { programName } = __require("data/programs.js");
 const { getTheme, nextTheme, setTheme } = __require("util/theme.js");
 const { icon } = __require("components/icons.js");
 
@@ -1604,8 +1639,31 @@ function setSavedBadge(el, count) {
   }
 }
 
+const STALE_AFTER_HOURS = 24;
+
+// What the footer says about the current data: where it came from, when it
+// was collected, which programs it covers, and whether it may be stale.
+function provenanceLines(source, now = Date.now()) {
+  if (!source || source.kind === 'synthetic') return [];
+  const lines = [];
+  if (source.generatedAt) {
+    const age = hoursSince(source.generatedAt, now);
+    lines.push(
+      age > STALE_AFTER_HOURS
+        ? `<span class="badge badge-bad">May be out of date</span> Collected ${esc(fmtDateTime(source.generatedAt))}, ${Math.round(age / 24)} day(s) ago.`
+        : `Collected ${esc(fmtDateTime(source.generatedAt))}.`,
+    );
+  }
+  const covered = (source.sources ?? []).filter((s) => s.status === 'ok' && s.awards > 0).map((s) => programName(s.programId));
+  if (source.sources?.length) {
+    lines.push(covered.length ? `Covers ${esc(covered.join(', '))} only; other programs aren't included.` : 'No program returned data in the last collection.');
+  }
+  return lines;
+}
+
 function renderFooter(el, source, today) {
   const synthetic = source?.kind === 'synthetic';
+  const provenance = provenanceLines(source);
   el.innerHTML = `
     <footer class="mt-16 border-t border-ink-200 bg-ink-0">
       <div class="mx-auto grid max-w-7xl gap-6 px-4 py-8 text-sm text-ink-600 md:grid-cols-3">
@@ -1619,7 +1677,7 @@ function renderFooter(el, source, today) {
           ${
             synthetic
               ? '<p class="mt-1"><span class="badge">Demo data</span> Generated, not real availability. Always confirm with the program before transferring points.</p>'
-              : '<p class="mt-1">Loaded from your award file. Confirm with the program before transferring points.</p>'
+              : `${provenance.map((l) => `<p class="mt-1">${l}</p>`).join('')}<p class="mt-1">Confirm with the program before transferring points.</p>`
           }
         </div>
         <div>
@@ -3967,7 +4025,8 @@ const { CARRIER_PREMIUM, CASH_FLOOR, CASH_PER_KM, SWEET_SPOT_THRESHOLD } = __req
 const { MAX_CONNECT_MINUTES, MAX_DETOUR_RATIO, MIN_CONNECT_MINUTES } = __require("data/connections.js");
 const { REPO_URL } = __require("components/header.js");
 const { announce, esc, mount } = __require("util/dom.js");
-const { CABINS, CABIN_SHORT, fmtNumber } = __require("util/format.js");
+const { CABINS, CABIN_SHORT, fmtDateTime, fmtNumber, plural } = __require("util/format.js");
+const { programName } = __require("data/programs.js");
 
 const EXAMPLE_RECORD = `{
   "from": "JFK",
@@ -3986,12 +4045,30 @@ const EXAMPLE_RECORD = `{
   "seats": 2
 }`;
 
+const SOURCE_LABEL = {
+  ok: 'collected',
+  blocked: 'blocked automated access, skipped',
+  disallowed: "robots.txt doesn't allow it, skipped",
+  failing: 'errors, skipped',
+};
+
 function sourceStatusHtml() {
   const s = getSource();
   if (!s) return '';
   return `
     <div class="rounded-lg bg-ink-100 p-3 text-sm">
-      <p><span class="font-semibold text-ink-900">Current data:</span> ${esc(s.label)} · ${fmtNumber(s.count)} awards</p>
+      <p><span class="font-semibold text-ink-900">Current data:</span> ${esc(s.label)} · ${plural(s.count, 'award')}${
+        s.generatedAt ? ` · collected ${esc(fmtDateTime(s.generatedAt))}` : ''
+      }</p>
+      ${
+        s.sources?.length
+          ? `<ul class="mt-2 space-y-0.5 text-ink-700">${s.sources
+              .map((p) => `<li><span class="font-semibold">${esc(programName(p.programId))}:</span> ${esc(SOURCE_LABEL[p.status])}${
+                p.status === 'ok' ? `, ${plural(p.awards, 'award')}` : ''
+              }${p.detail && p.status !== 'ok' ? ` (${esc(p.detail)})` : ''}</li>`)
+              .join('')}</ul>`
+          : ''
+      }
       ${s.warnings?.length ? `<ul class="mt-2 list-disc space-y-0.5 pl-5 text-ink-700">${s.warnings.map((w) => `<li>${esc(w.trim())}</li>`).join('')}</ul>` : ''}
     </div>`;
 }

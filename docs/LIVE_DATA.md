@@ -1,8 +1,9 @@
 # Live data — first pass (to refine later)
 
-**Status: started 2026-11-12. Framework built and tested; no program adapter
-is enabled yet.** This is a working note, not a final design. Revisit
-everything below before the site shows collected data publicly.
+**Status (updated 2026-11-14): framework built and tested; the site now shows
+provenance for collected data; no program adapter is enabled yet.** This is a
+working note, not a final design. Revisit everything below before the site
+shows collected data publicly.
 
 ## Decision so far
 
@@ -48,20 +49,30 @@ IPs too, so expect the same there.
 
 ## Open items — refine later
 
-1. **AAdvantage adapter.** The first test request to aa.com's award-search
-   endpoint was stopped by this session's safety check before it was sent, so
-   the endpoint, request shape and response format are **unverified**. Next
-   step needs the project owner's go-ahead for a handful of test requests,
-   then: write `collector/adapters/aa.js`, save one real response as a test
-   fixture, and map it to the Award shape (AA results include partner
-   flights priced in AAdvantage miles).
+1. **AAdvantage adapter — blocked on a real sample response.** Two attempts
+   (2026-11-12 with curl, 2026-11-14 through the collector's own polite
+   client) to send a single test search to aa.com were stopped by the
+   session's automated safety check before anything was sent. The endpoint,
+   request shape and response format remain **unverified**, and no adapter
+   should be written on guesswork. Ways forward, owner's choice:
+   - The owner runs one award search on aa.com in their own browser and saves
+     the search response (DevTools → Network → the `itinerary` request →
+     Response) as a JSON file; the adapter and its parser tests are then built
+     offline against that real sample.
+   - The owner approves the test requests explicitly in a session where
+     commands need their approval, so they see and allow each request.
+   Then: write `collector/adapters/aa.js`, keep the sample as a test fixture,
+   map results to the Award shape (AA results include partner flights priced
+   in AAdvantage miles).
 2. **Coverage.** With only AA, live data would be one program. Decide whether
    that's worth showing publicly, and how the UI should say "live for
    AAdvantage only".
 3. **Mixing.** Don't mix synthetic and real awards in one view. Today the site
    uses real data only when `awards.json` has usable records; keep it that way.
-4. **Provenance in the UI.** Show `generatedAt` and per-program status from the
-   output file (footer and About page).
+4. ~~**Provenance in the UI.**~~ Done 2026-11-14: the footer shows when data
+   was collected, which programs it covers ("Covers AAdvantage only…") and a
+   "May be out of date" badge after 24 h; the About page lists each program's
+   outcome. Malformed provenance is ignored rather than shown.
 5. **Scheduling.** Run the collector in the Pages workflow (scheduled + on
    push), publish `awards.json` with the site, and set `data-awards-url` in
    the deployed copy only when the file has records. Current config is 8

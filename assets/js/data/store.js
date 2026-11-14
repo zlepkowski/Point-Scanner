@@ -1,5 +1,5 @@
 import { generateAwards, WINDOW_DAYS } from './awards.js';
-import { normalizeAwards } from './validate.js';
+import { normalizeAwards, readProvenance } from './validate.js';
 import { centsPerMile, dealScore, isSweetSpot } from '../util/cpm.js';
 import { todayIso, addDays } from '../util/date.js';
 
@@ -65,7 +65,7 @@ export async function loadAwards({ url, globalData, today = todayIso(), fetchImp
     const result = normalizeAwards(globalData, { today });
     warnings.push(...result.warnings);
     if (result.awards.length) {
-      return setAwards(result.awards, { kind: 'json', label: 'Embedded award data', warnings }, today);
+      return setAwards(result.awards, { kind: 'json', label: 'Embedded award data', warnings, ...readProvenance(globalData) }, today);
     }
     warnings.push('Embedded award data had no usable records; using synthetic data instead.');
   }
@@ -74,10 +74,11 @@ export async function loadAwards({ url, globalData, today = todayIso(), fetchImp
     try {
       const res = await fetchImpl(url, { cache: 'no-cache' });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const result = normalizeAwards(await res.json(), { today });
+      const json = await res.json();
+      const result = normalizeAwards(json, { today });
       warnings.push(...result.warnings);
       if (result.awards.length) {
-        return setAwards(result.awards, { kind: 'json', label: url, warnings }, today);
+        return setAwards(result.awards, { kind: 'json', label: url, warnings, ...readProvenance(json) }, today);
       }
       warnings.push(`${url} had no usable records; using synthetic data instead.`);
     } catch (err) {
@@ -91,7 +92,7 @@ export async function loadAwards({ url, globalData, today = todayIso(), fetchImp
 export function loadAwardsFromJson(json, label) {
   const result = normalizeAwards(json, { today: state.today });
   if (!result.awards.length) return { ok: false, warnings: result.warnings };
-  setAwards(result.awards, { kind: 'json', label, warnings: result.warnings });
+  setAwards(result.awards, { kind: 'json', label, warnings: result.warnings, ...readProvenance(json) });
   return { ok: true, warnings: result.warnings };
 }
 

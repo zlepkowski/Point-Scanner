@@ -68,3 +68,26 @@ export function normalizeAwards(input, { today } = {}) {
   if (stale) warnings.push(`Skipped ${stale} record(s) dated before ${today}.`);
   return { awards, warnings };
 }
+
+const SOURCE_STATUSES = new Set(['ok', 'blocked', 'disallowed', 'failing']);
+
+// Collector output (and any well-formed award file) may say when it was
+// collected and how each program fared. Anything malformed is ignored rather
+// than shown, so a bad file can't put misleading freshness on screen.
+export function readProvenance(input) {
+  if (!input || Array.isArray(input) || typeof input !== 'object') return {};
+  const out = {};
+  const t = Date.parse(input.generatedAt);
+  if (typeof input.generatedAt === 'string' && Number.isFinite(t)) out.generatedAt = new Date(t).toISOString();
+  if (Array.isArray(input.sources)) {
+    out.sources = input.sources
+      .filter((s) => s && programById.has(s.programId) && SOURCE_STATUSES.has(s.status))
+      .map((s) => ({
+        programId: s.programId,
+        status: s.status,
+        awards: Number.isInteger(s.awards) && s.awards >= 0 ? s.awards : 0,
+        detail: typeof s.detail === 'string' ? s.detail.slice(0, 200) : null,
+      }));
+  }
+  return out;
+}

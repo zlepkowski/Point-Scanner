@@ -121,3 +121,34 @@ test('home value example contrasts a cheaper-in-miles award with a better-value 
   assert.ok(ex.better.score > ex.cheaper.score && ex.cheaper.miles < ex.better.miles);
   assert.equal(valueExample(awards([{ miles: 60000 }])), null);
 });
+
+test('provenance from a collector file is kept, malformed parts are dropped', async () => {
+  const { readProvenance } = await import('../assets/js/data/validate.js');
+  const p = readProvenance({
+    generatedAt: '2026-11-14T06:00:00Z',
+    sources: [
+      { adapter: 'aa', programId: 'aadvantage', status: 'ok', awards: 120 },
+      { adapter: 'ua', programId: 'united', status: 'blocked', detail: 'www.united.com refused automated access (403)' },
+      { programId: 'nope', status: 'ok' },
+      { programId: 'delta', status: 'weird' },
+    ],
+    awards: [],
+  });
+  assert.equal(p.generatedAt, '2026-11-14T06:00:00.000Z');
+  assert.deepEqual(p.sources.map((s) => s.programId), ['aadvantage', 'united']);
+  assert.deepEqual(readProvenance([award()]), {});
+  assert.deepEqual(readProvenance({ generatedAt: 'yesterday' }), {});
+});
+
+test('loadAwards carries provenance onto the source; the footer reports coverage and staleness', async () => {
+  const { provenanceLines } = await import('../assets/js/components/header.js');
+  const file = { generatedAt: '2026-11-14T06:00:00Z', sources: [{ programId: 'aadvantage', status: 'ok', awards: 1 }, { programId: 'united', status: 'blocked' }], awards: [award({ date: '2026-12-01', programId: 'aadvantage', airline: 'AA' })] };
+  await loadAwards({ globalData: file, today: TODAY });
+  const source = getSource();
+  assert.equal(source.generatedAt, '2026-11-14T06:00:00.000Z');
+  const fresh = provenanceLines(source, Date.parse('2026-11-14T12:00:00Z')).join(' ');
+  assert.ok(fresh.includes('Covers AAdvantage only'));
+  assert.ok(!fresh.includes('out of date'));
+  assert.ok(provenanceLines(source, Date.parse('2026-11-17T12:00:00Z')).join(' ').includes('May be out of date'));
+  assert.deepEqual(provenanceLines({ kind: 'synthetic' }), []);
+});

@@ -1,5 +1,6 @@
 import { esc } from '../util/dom.js';
-import { fmtDateLong, plural } from '../util/format.js';
+import { fmtDateLong, fmtDateTime, hoursSince, plural } from '../util/format.js';
+import { programName } from '../data/programs.js';
 import { getTheme, nextTheme, setTheme } from '../util/theme.js';
 import { icon } from './icons.js';
 
@@ -114,8 +115,31 @@ export function setSavedBadge(el, count) {
   }
 }
 
+export const STALE_AFTER_HOURS = 24;
+
+// What the footer says about the current data: where it came from, when it
+// was collected, which programs it covers, and whether it may be stale.
+export function provenanceLines(source, now = Date.now()) {
+  if (!source || source.kind === 'synthetic') return [];
+  const lines = [];
+  if (source.generatedAt) {
+    const age = hoursSince(source.generatedAt, now);
+    lines.push(
+      age > STALE_AFTER_HOURS
+        ? `<span class="badge badge-bad">May be out of date</span> Collected ${esc(fmtDateTime(source.generatedAt))}, ${Math.round(age / 24)} day(s) ago.`
+        : `Collected ${esc(fmtDateTime(source.generatedAt))}.`,
+    );
+  }
+  const covered = (source.sources ?? []).filter((s) => s.status === 'ok' && s.awards > 0).map((s) => programName(s.programId));
+  if (source.sources?.length) {
+    lines.push(covered.length ? `Covers ${esc(covered.join(', '))} only; other programs aren't included.` : 'No program returned data in the last collection.');
+  }
+  return lines;
+}
+
 export function renderFooter(el, source, today) {
   const synthetic = source?.kind === 'synthetic';
+  const provenance = provenanceLines(source);
   el.innerHTML = `
     <footer class="mt-16 border-t border-ink-200 bg-ink-0">
       <div class="mx-auto grid max-w-7xl gap-6 px-4 py-8 text-sm text-ink-600 md:grid-cols-3">
@@ -129,7 +153,7 @@ export function renderFooter(el, source, today) {
           ${
             synthetic
               ? '<p class="mt-1"><span class="badge">Demo data</span> Generated, not real availability. Always confirm with the program before transferring points.</p>'
-              : '<p class="mt-1">Loaded from your award file. Confirm with the program before transferring points.</p>'
+              : `${provenance.map((l) => `<p class="mt-1">${l}</p>`).join('')}<p class="mt-1">Confirm with the program before transferring points.</p>`
           }
         </div>
         <div>
